@@ -11,7 +11,7 @@
 
 ## Purpose
 
-Contract federated remote: screens, widgets, record tabs, and transaction composition. Assumed reinsurance contract administration, layers, participations, accounts, and bordereaux.
+Contract federated remote: screens, widgets, record tabs, and transaction composition. Reinsurance contract administration, layers, participations, accounts, and bordereaux.
 
 ## Responsibilities
 
