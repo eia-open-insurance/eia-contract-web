@@ -13,6 +13,20 @@
 
 Contract federated remote: screens, widgets, record tabs, and transaction composition. Reinsurance contract administration, layers, participations, accounts, and bordereaux.
 
+## Implemented slice
+
+The remote is a tabbed workbench: Contracts (create, list, select, transition),
+Layers, Participants (with the share balance per layer), Terms, Security,
+Cessions, Bordereaux, and Commutation (propose, approve, execute). The
+selected-contract header lists the bind preconditions from
+`GET /api/v1/contracts/{id}/bind-eligibility` and enables **Bind contract** only
+when the contract is PLACED and every check passes.
+
+`npm start` serves the remote on port 3003 with `/api` proxied to the domain
+service on 8086. `npm test` runs the Playwright suite, which covers the existing
+workbench plus the layer/participant/bind and cession flows. `IMPLEMENTATION.md`
+records the screens, tests, and remaining gaps.
+
 ## Responsibilities
 
 - Keep this repository focused on one deployable component or one platform concern.
