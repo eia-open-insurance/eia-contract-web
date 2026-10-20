@@ -37,14 +37,22 @@ through `GET /api/v1/parties/{id}` and link `displayName · partyNumber` text to
 `/party?record={id}`; the short UUID stays visible while a lookup loads or fails.
 Overview explains that assumed claims and retrocessions attach to the contract
 while actual cessions remain FS-RI-owned, and lists related assumed claims and
-retrocessions found through their search endpoints.
+retrocessions found through their search endpoints. A **Documents** card also
+lists the documents linked to the selected contract from
+`GET /api/v1/documents?linkedType=CONTRACT&linkedId={id}`: the count, document
+number (linked to `/document?record={id}`), title, type, and status, with an
+empty state and an evidence note. Documents are evidence and never change the
+contract; a slow or failing Document API renders inside the card without
+blocking the record.
 
 `npm start` serves the remote on port 3003 with `/api` proxied to the domain
 service on 8086. `npm test` runs the Playwright suite covering create,
 layer/participant/bind, the over-100% share rejection, the cession/capacity flow,
-and record discovery (deep links, queue filtering, predictive party lookup,
-party-label resolution and fallback, and cross-links). `IMPLEMENTATION.md` records
-the screens, tests, and remaining gaps.
+record discovery (deep links, queue filtering, predictive party lookup,
+party-label resolution and fallback, and cross-links), and linked-document
+visibility (query and tenant header, document links, empty state, contained
+error, and non-blocking fetch). `IMPLEMENTATION.md` records the screens, tests,
+and remaining gaps.
 
 ## Responsibilities
 

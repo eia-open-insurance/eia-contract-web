@@ -8,6 +8,17 @@ import { partyEndpoint, partyRecordLabel } from './party';
 import ResourceSection from './ResourceSection';
 import ParticipantsPanel from './ParticipantsPanel';
 import CessionsPanel from './CessionsPanel';
+import {
+  CONTRACT_LINKED_TYPE,
+  documentHref,
+  documentNumber,
+  documentRecordId,
+  documentStatus,
+  documentTitle,
+  documentType,
+  linkedDocuments,
+  linkedDocumentsEndpoint
+} from './documents';
 
 const CONTRACT_TYPES = [
   'QUOTA_SHARE',
@@ -236,6 +247,9 @@ export default function App() {
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [related, setRelated] = useState({ assumedClaims: [], retrocessions: [] });
   const [relatedLoading, setRelatedLoading] = useState(false);
+  const [documents, setDocuments] = useState([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsError, setDocumentsError] = useState('');
   const [routeVersion, setRouteVersion] = useState(0);
 
   const selected = contracts.find((contract) => contract.id === selectedId) || null;
@@ -384,6 +398,40 @@ export default function App() {
       setRelated({ assumedClaims, retrocessions });
       setRelatedLoading(false);
     });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, refreshToken]);
+
+  /**
+   * Linked documents for the selected contract. The fetch starts after the
+   * record is already on screen and owns its own loading/error state: a slow or
+   * unavailable Document service never blocks or fails the contract render.
+   */
+  useEffect(() => {
+    if (!selectedId) {
+      setDocuments([]);
+      setDocumentsError('');
+      setDocumentsLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setDocuments([]);
+    setDocumentsError('');
+    setDocumentsLoading(true);
+    apiFetch(linkedDocumentsEndpoint(CONTRACT_LINKED_TYPE, selectedId))
+      .then((payload) => {
+        if (cancelled) return;
+        setDocuments(linkedDocuments(payload));
+        setDocumentsError('');
+        setDocumentsLoading(false);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setDocuments([]);
+        setDocumentsError(errorMessage(error));
+        setDocumentsLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -1016,6 +1064,86 @@ export default function App() {
                           )}
                         </div>
                       </>
+                    )}
+                  </section>
+
+                  <section
+                    className="eia-card"
+                    id="linked-documents"
+                    aria-label="Documents"
+                    data-testid="documents-card"
+                    style={{ marginTop: 14 }}
+                  >
+                    <div className="eia-section-title" style={{ marginTop: 0 }}>
+                      <h3>Documents</h3>
+                      <span className="eia-muted" data-testid="documents-count">
+                        {documentsLoading
+                          ? '…'
+                          : documentsError
+                            ? '—'
+                            : `${documents.length} document${documents.length === 1 ? '' : 's'}`}
+                      </span>
+                    </div>
+                    <p className="eia-muted" style={{ marginTop: 4 }}>
+                      Documents are evidence, not business facts: they record what was filed
+                      against this contract, but they never change its terms or status.
+                    </p>
+                    {documentsLoading && (
+                      <p className="eia-muted" data-testid="documents-loading">
+                        Loading linked documents…
+                      </p>
+                    )}
+                    {!documentsLoading && documentsError && (
+                      <p className="eia-muted" data-testid="documents-error">
+                        Linked documents could not be loaded ({documentsError}). The contract
+                        record is unaffected.
+                      </p>
+                    )}
+                    {!documentsLoading && !documentsError && documents.length === 0 && (
+                      <p className="eia-muted" data-testid="documents-empty">
+                        No documents are linked to this contract yet.
+                      </p>
+                    )}
+                    {!documentsLoading && !documentsError && documents.length > 0 && (
+                      <div className="eia-table-wrap" data-testid="documents-table">
+                        <table className="eia-table" aria-label="Linked documents">
+                          <thead>
+                            <tr>
+                              <th>Document</th>
+                              <th>Title</th>
+                              <th>Type</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {documents.map((row, index) => {
+                              const href = documentHref(row);
+                              const number = documentNumber(row) || shortId(documentRecordId(row));
+                              return (
+                                <tr key={documentRecordId(row) || `document-${index}`}>
+                                  <td>
+                                    {href ? (
+                                      <a
+                                        href={href}
+                                        data-testid={`document-link-${index}`}
+                                        onClick={(event) => {
+                                          event.preventDefault();
+                                          navigate(href);
+                                        }}
+                                      >
+                                        {number}
+                                      </a>
+                                    ) : number}
+                                  </td>
+                                  <td>{documentTitle(row) || '—'}</td>
+                                  <td>{documentType(row) || '—'}</td>
+                                  <td>{documentStatus(row) || '—'}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                   </section>
                 </>
