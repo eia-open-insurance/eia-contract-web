@@ -1,0 +1,24 @@
+/*
+ * Contract remote visual compatibility.
+ *
+ * `ui.css` styles `main button:hover` with a filled primary background. Because that
+ * selector is more specific than `.eia-tabs button`, tab buttons turn into solid blue
+ * blocks on hover instead of the canonical flat tab. Keep the tab treatment flat.
+ */
+.eia-tabs .eia-tab:hover,
+.eia-tabs .eia-tab.active:hover {
+  background: transparent !important;
+}
+
+.eia-tabs .eia-tab:hover {
+  color: var(--eia-blue) !important;
+}
+
+.eia-tabs .eia-tab.active:hover {
+  color: var(--eia-navy) !important;
+}
+
+/* Form submits stay compact rather than stretching across a grid column. */
+.eia-form-grid > .eia-field > button {
+  align-self: flex-start;
+}

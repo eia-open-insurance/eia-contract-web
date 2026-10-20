@@ -79,23 +79,36 @@ export default function CessionsPanel({ contractId, onChanged }) {
   if (!contractId) {
     return (
       <section aria-label="Cessions">
-        <h2>Cessions</h2>
-        <p>Select a contract on the Contracts tab to work with its cessions.</p>
+        <div className="eia-section-title">
+          <h2>Cessions</h2>
+        </div>
+        <div className="eia-empty">Select a contract from the register to work with its cessions.</div>
       </section>
     );
   }
 
+  const bookedLoss = cessions
+    .filter((cession) => ['RECORDED', 'CONFIRMED'].includes(cession.status))
+    .reduce((total, cession) => total + Number(cession.cededLossAmount || 0), 0);
+
   return (
     <section aria-label="Cessions" data-testid="cessions-panel">
-      <h2>Cessions</h2>
-      <p>Recorded cessions may not exceed the contract tower capacity.</p>
-      {error && <p role="alert" style={{ color: '#b00020' }}>{error}</p>}
-      {message && <p role="status" style={{ color: '#0b6b3a' }}>{message}</p>}
-      <form onSubmit={submit} style={{ display: 'grid', gap: 8, margin: '12px 0 20px', maxWidth: 680 }}>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>Layer</span>
+      <div className="eia-section-title">
+        <h2>Cessions</h2>
+        <span className="eia-muted">
+          {cessions.length} record{cessions.length === 1 ? '' : 's'} · booked loss{' '}
+          {bookedLoss.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      </div>
+      <p className="eia-muted">Recorded cessions may not exceed the contract tower capacity.</p>
+      {error && <p role="alert">{error}</p>}
+      {message && <p role="status">{message}</p>}
+
+      <form className="eia-form-grid" onSubmit={submit} style={{ margin: '12px 0 16px' }}>
+        <div className="eia-field">
+          <label htmlFor="cession-layer">Cession layer</label>
           <select
-            aria-label="Cession layer"
+            id="cession-layer"
             value={form.layerId}
             onChange={(e) => setForm({ ...form, layerId: e.target.value })}
           >
@@ -104,101 +117,106 @@ export default function CessionsPanel({ contractId, onChanged }) {
               <option key={layer.id} value={layer.id}>Layer {layer.layerNumber}</option>
             ))}
           </select>
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>Source type</span>
+        </div>
+        <div className="eia-field">
+          <label htmlFor="cession-source-type">Source type</label>
           <select
-            aria-label="Source type"
+            id="cession-source-type"
             value={form.sourceType}
             onChange={(e) => setForm({ ...form, sourceType: e.target.value })}
           >
             {SOURCE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
           </select>
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>Claim reference</span>
+        </div>
+        <div className="eia-field">
+          <label htmlFor="cession-claim-ref">Claim reference</label>
           <input
-            aria-label="Claim reference"
+            id="cession-claim-ref"
             placeholder="CLM-2026-0007"
             value={form.claimRef}
             onChange={(e) => setForm({ ...form, claimRef: e.target.value })}
           />
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>Policy reference</span>
+        </div>
+        <div className="eia-field">
+          <label htmlFor="cession-policy-ref">Policy reference</label>
           <input
-            aria-label="Policy reference"
+            id="cession-policy-ref"
             placeholder="POL-2026-0001"
             value={form.policyRef}
             onChange={(e) => setForm({ ...form, policyRef: e.target.value })}
           />
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>Cession type</span>
+        </div>
+        <div className="eia-field">
+          <label htmlFor="cession-type">Cession type</label>
           <select
-            aria-label="Cession type"
+            id="cession-type"
             value={form.cessionType}
             onChange={(e) => setForm({ ...form, cessionType: e.target.value })}
           >
             {CESSION_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
           </select>
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>Cession percent</span>
+        </div>
+        <div className="eia-field">
+          <label htmlFor="cession-pct">Cession percent</label>
           <input
-            aria-label="Cession percent"
+            id="cession-pct"
             placeholder="40"
             value={form.cessionPct}
             onChange={(e) => setForm({ ...form, cessionPct: e.target.value })}
           />
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>Ceded premium</span>
+        </div>
+        <div className="eia-field">
+          <label htmlFor="cession-ceded-premium">Ceded premium</label>
           <input
-            aria-label="Ceded premium"
+            id="cession-ceded-premium"
             placeholder="400000.0000"
             value={form.cededPremiumAmount}
             onChange={(e) => setForm({ ...form, cededPremiumAmount: e.target.value })}
           />
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>Ceded loss</span>
+        </div>
+        <div className="eia-field">
+          <label htmlFor="cession-ceded-loss">Ceded loss</label>
           <input
-            aria-label="Ceded loss"
+            id="cession-ceded-loss"
             placeholder="240000.0000"
             value={form.cededLossAmount}
             onChange={(e) => setForm({ ...form, cededLossAmount: e.target.value })}
           />
-        </label>
-        <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Record cession'}</button>
+        </div>
+        <div className="eia-field">
+          <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Record cession'}</button>
+        </div>
       </form>
-      <table width="100%" cellPadding="8" style={{ borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            <th align="left">Number</th>
-            <th align="left">Source</th>
-            <th align="left">Reference</th>
-            <th align="left">Ceded premium</th>
-            <th align="left">Ceded loss</th>
-            <th align="left">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {cessions.map((cession) => (
-            <tr key={cession.id} style={{ borderTop: '1px solid #ddd' }}>
-              <td>{cession.cessionNumber}</td>
-              <td>{cession.sourceType}</td>
-              <td>{cession.claimRef || cession.policyRef}</td>
-              <td>{formatValue(cession.cededPremiumAmount)}</td>
-              <td>{formatValue(cession.cededLossAmount)}</td>
-              <td>{cession.status}</td>
+
+      <div className="eia-table-wrap">
+        <table className="eia-table">
+          <thead>
+            <tr>
+              <th>Number</th>
+              <th>Source</th>
+              <th>Reference</th>
+              <th>Ceded premium</th>
+              <th>Ceded loss</th>
+              <th>Status</th>
             </tr>
-          ))}
-          {cessions.length === 0 && (
-            <tr><td colSpan={6}>No cessions yet.</td></tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {cessions.map((cession) => (
+              <tr key={cession.id}>
+                <td className="eia-mono">{cession.cessionNumber}</td>
+                <td>{cession.sourceType}</td>
+                <td>{cession.claimRef || cession.policyRef}</td>
+                <td>{formatValue(cession.cededPremiumAmount)}</td>
+                <td>{formatValue(cession.cededLossAmount)}</td>
+                <td>{cession.status}</td>
+              </tr>
+            ))}
+            {cessions.length === 0 && (
+              <tr><td className="eia-muted" colSpan={6}>No cessions yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

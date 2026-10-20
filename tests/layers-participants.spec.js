@@ -132,12 +132,20 @@ test('records a layer and a participant, then binds the contract', async ({ page
   });
 
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Contract' })).toBeVisible();
-  await expect(page.getByRole('cell', { name: 'XOL-2026-00091' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Contract', level: 1 })).toBeVisible();
 
-  await page.getByRole('row').filter({ hasText: 'XOL-2026-00091' }).getByRole('button', { name: 'Select' }).click();
-  await expect(page.getByTestId('layers-panel')).toBeVisible();
+  const registerEntry = page.locator('.eia-record-list button').filter({ hasText: 'XOL-2026-00091' });
+  await expect(registerEntry).toBeVisible();
+  await registerEntry.click();
+
+  // The record panel exposes the contract identity, status, and bind action.
+  await expect(page.locator('.eia-record-panel').getByRole('heading', { name: 'XOL-2026-00091' })).toBeVisible();
+  await expect(page.getByTestId('contract-status')).toHaveText('PLACED');
+  await expect(page.getByTestId('contract-bound-state')).toHaveText('Unbound');
   await expect(page.getByRole('button', { name: 'Bind contract' })).toBeDisabled();
+
+  await page.getByRole('button', { name: 'Layers', exact: true }).click();
+  await expect(page.getByTestId('layers-panel')).toBeVisible();
 
   await page.getByLabel('Layer number').fill('1');
   await page.getByLabel('Attachment amount').fill('0');
@@ -146,6 +154,7 @@ test('records a layer and a participant, then binds the contract', async ({ page
 
   await expect(page.getByRole('cell', { name: '1000000.0000' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'EXCESS_OF_LOSS' })).toBeVisible();
+  await expect(page.getByTestId('summary-limit')).toHaveText('$1,000,000');
 
   await page.getByRole('button', { name: 'Participants', exact: true }).click();
   await expect(page.getByTestId('participants-panel')).toBeVisible();
@@ -157,12 +166,14 @@ test('records a layer and a participant, then binds the contract', async ({ page
   await expect(page.getByRole('cell', { name: 'REINSURER' })).toBeVisible();
   await expect(page.getByRole('cell', { name: '100.000000' })).toBeVisible();
   await expect(page.getByTestId('share-totals')).toContainText('Layer 1 total: 100.000000% (balanced)');
+  await expect(page.getByTestId('summary-share')).toHaveText('100.00%');
 
   const bindButton = page.getByRole('button', { name: 'Bind contract' });
   await expect(bindButton).toBeEnabled();
   await bindButton.click();
   await expect(page.getByText('Contract XOL-2026-00091 is BOUND.')).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Selected contract' })).toContainText('Status: BOUND');
+  await expect(page.getByTestId('contract-status')).toHaveText('BOUND');
+  await expect(page.getByTestId('contract-bound-state')).toHaveText('Bound');
 });
 
 test('rejects participant shares that would exceed 100 percent', async ({ page }) => {
@@ -209,7 +220,7 @@ test('rejects participant shares that would exceed 100 percent', async ({ page }
   });
 
   await page.goto('/');
-  await page.getByRole('row').filter({ hasText: 'XOL-2026-00091' }).getByRole('button', { name: 'Select' }).click();
+  await page.locator('.eia-record-list button').filter({ hasText: 'XOL-2026-00091' }).click();
   await page.getByRole('button', { name: 'Participants', exact: true }).click();
 
   await page.getByLabel('Party id').fill(PARTY_ID);

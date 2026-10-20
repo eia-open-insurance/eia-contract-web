@@ -99,23 +99,31 @@ export default function ParticipantsPanel({ contractId, onChanged }) {
   if (!contractId) {
     return (
       <section aria-label="Participants">
-        <h2>Participants</h2>
-        <p>Select a contract on the Contracts tab to work with its participants.</p>
+        <div className="eia-section-title">
+          <h2>Participants</h2>
+        </div>
+        <div className="eia-empty">Select a contract from the register to work with its participants.</div>
       </section>
     );
   }
 
   return (
     <section aria-label="Participants" data-testid="participants-panel">
-      <h2>Participants</h2>
-      <p>Reinsurers and their shares. Risk-bearing shares must total 100% before bind.</p>
-      {error && <p role="alert" style={{ color: '#b00020' }}>{error}</p>}
-      {message && <p role="status" style={{ color: '#0b6b3a' }}>{message}</p>}
-      <form onSubmit={submit} style={{ display: 'grid', gap: 8, margin: '12px 0 20px', maxWidth: 680 }}>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>Layer</span>
+      <div className="eia-section-title">
+        <h2>Participants</h2>
+        <span className="eia-muted">
+          {participants.length} record{participants.length === 1 ? '' : 's'}
+        </span>
+      </div>
+      <p className="eia-muted">Reinsurers and their shares. Risk-bearing shares must total 100% before bind.</p>
+      {error && <p role="alert">{error}</p>}
+      {message && <p role="status">{message}</p>}
+
+      <form className="eia-form-grid" onSubmit={submit} style={{ margin: '12px 0 16px' }}>
+        <div className="eia-field">
+          <label htmlFor="participant-layer">Layer</label>
           <select
-            aria-label="Layer"
+            id="participant-layer"
             value={form.layerId}
             onChange={(e) => setForm({ ...form, layerId: e.target.value })}
           >
@@ -124,96 +132,110 @@ export default function ParticipantsPanel({ contractId, onChanged }) {
               <option key={layer.id} value={layer.id}>Layer {layer.layerNumber}</option>
             ))}
           </select>
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>Party id</span>
+        </div>
+        <div className="eia-field">
+          <label htmlFor="participant-party">Party id</label>
           <input
-            aria-label="Party id"
+            id="participant-party"
             placeholder="Reinsurer party id"
             value={form.partyId}
             onChange={(e) => setForm({ ...form, partyId: e.target.value })}
             required
           />
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>Role</span>
+        </div>
+        <div className="eia-field">
+          <label htmlFor="participant-role">Role</label>
           <select
-            aria-label="Role"
+            id="participant-role"
             value={form.participantRole}
             onChange={(e) => setForm({ ...form, participantRole: e.target.value })}
           >
             {ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
           </select>
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>Share percent</span>
+        </div>
+        <div className="eia-field">
+          <label htmlFor="participant-share">Share percent</label>
           <input
-            aria-label="Share percent"
+            id="participant-share"
             placeholder="60.000000"
             value={form.sharePct}
             onChange={(e) => setForm({ ...form, sharePct: e.target.value })}
             required
           />
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>Signature status</span>
+        </div>
+        <div className="eia-field">
+          <label htmlFor="participant-signature">Signature status</label>
           <select
-            aria-label="Signature status"
+            id="participant-signature"
             value={form.signatureStatus}
             onChange={(e) => setForm({ ...form, signatureStatus: e.target.value })}
           >
             {SIGNATURE_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
           </select>
-        </label>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        </div>
+        <div className="eia-field">
+          <label htmlFor="participant-lead">Lead participant</label>
           <input
-            aria-label="Lead participant"
+            id="participant-lead"
             type="checkbox"
             checked={form.leadFlag}
             onChange={(e) => setForm({ ...form, leadFlag: e.target.checked })}
+            style={{ width: 'auto' }}
           />
-          <span>Lead participant</span>
-        </label>
-        <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Add participant'}</button>
+        </div>
+        <div className="eia-field">
+          <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Add participant'}</button>
+        </div>
       </form>
-      <p aria-live="polite" data-testid="share-totals">
-        {[...totals.entries()].map(([layerKey, total]) => {
-          const balanced = Math.abs(total - 100) <= 0.0001;
-          return (
-            <span key={layerKey} style={{ display: 'block', color: balanced ? '#0b6b3a' : '#b00020' }}>
-              {labelFor(layerKey)} total: {total.toFixed(6)}% ({balanced ? 'balanced' : 'not balanced'})
-            </span>
-          );
-        })}
-        {totals.size === 0 && <span>No risk-bearing shares recorded.</span>}
-      </p>
-      <table width="100%" cellPadding="8" style={{ borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            <th align="left">Role</th>
-            <th align="left">Party</th>
-            <th align="left">Layer</th>
-            <th align="left">Share %</th>
-            <th align="left">Signature</th>
-            <th align="left">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {participants.map((participant) => (
-            <tr key={participant.id} style={{ borderTop: '1px solid #ddd' }}>
-              <td>{participant.participantRole}</td>
-              <td>{participant.partyId}</td>
-              <td>{participant.layerId ? labelFor(participant.layerId) : 'Contract level'}</td>
-              <td>{formatValue(participant.sharePct)}</td>
-              <td>{participant.signatureStatus}</td>
-              <td>{participant.status}</td>
+
+      <div className="eia-card" style={{ marginBottom: 14 }}>
+        <h3>Share balance</h3>
+        <p aria-live="polite" data-testid="share-totals" style={{ margin: 0 }}>
+          {[...totals.entries()].map(([layerKey, total]) => {
+            const balanced = Math.abs(total - 100) <= 0.0001;
+            return (
+              <span
+                key={layerKey}
+                className={`eia-badge ${balanced ? 'ok' : 'warn'}`}
+                style={{ marginRight: 6, marginBottom: 4 }}
+              >
+                {labelFor(layerKey)} total: {total.toFixed(6)}% ({balanced ? 'balanced' : 'not balanced'})
+              </span>
+            );
+          })}
+          {totals.size === 0 && <span className="eia-muted">No risk-bearing shares recorded.</span>}
+        </p>
+      </div>
+
+      <div className="eia-table-wrap">
+        <table className="eia-table">
+          <thead>
+            <tr>
+              <th>Role</th>
+              <th>Party</th>
+              <th>Layer</th>
+              <th>Share %</th>
+              <th>Signature</th>
+              <th>Status</th>
             </tr>
-          ))}
-          {participants.length === 0 && (
-            <tr><td colSpan={6}>No participations yet.</td></tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {participants.map((participant) => (
+              <tr key={participant.id}>
+                <td>{participant.participantRole}</td>
+                <td className="eia-mono">{participant.partyId}</td>
+                <td>{participant.layerId ? labelFor(participant.layerId) : 'Contract level'}</td>
+                <td>{formatValue(participant.sharePct)}</td>
+                <td>{participant.signatureStatus}</td>
+                <td>{participant.status}</td>
+              </tr>
+            ))}
+            {participants.length === 0 && (
+              <tr><td className="eia-muted" colSpan={6}>No participations yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

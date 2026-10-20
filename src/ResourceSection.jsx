@@ -50,6 +50,8 @@ export default function ResourceSection({
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const fieldId = (name) => `${testId || resource}-${name}`;
+
   async function load() {
     if (!contractId) {
       setRows([]);
@@ -101,26 +103,34 @@ export default function ResourceSection({
 
   if (!contractId) {
     return (
-      <section aria-label={title}>
-        <h2>{title}</h2>
-        <p>Select a contract on the Contracts tab to work with its {title.toLowerCase()}.</p>
+      <section aria-label={title} data-testid={testId}>
+        <div className="eia-section-title">
+          <h2>{title}</h2>
+        </div>
+        <div className="eia-empty">Select a contract from the register to work with its {title.toLowerCase()}.</div>
       </section>
     );
   }
 
   return (
     <section aria-label={title} data-testid={testId}>
-      <h2>{title}</h2>
-      {description && <p>{description}</p>}
-      {error && <p role="alert" style={{ color: '#b00020' }}>{error}</p>}
-      {message && <p role="status" style={{ color: '#0b6b3a' }}>{message}</p>}
-      <form onSubmit={submit} style={{ display: 'grid', gap: 8, margin: '12px 0 20px', maxWidth: 680 }}>
+      <div className="eia-section-title">
+        <h2>{title}</h2>
+        <span className="eia-muted">
+          {rows.length} record{rows.length === 1 ? '' : 's'}
+        </span>
+      </div>
+      {description && <p className="eia-muted">{description}</p>}
+      {error && <p role="alert">{error}</p>}
+      {message && <p role="status">{message}</p>}
+
+      <form className="eia-form-grid" onSubmit={submit} style={{ margin: '12px 0 16px' }}>
         {fields.map((field) => (
-          <label key={field.name} style={{ display: 'grid', gap: 4 }}>
-            <span>{field.label}</span>
+          <div className="eia-field" key={field.name}>
+            <label htmlFor={fieldId(field.name)}>{field.label}</label>
             {field.type === 'select' ? (
               <select
-                aria-label={field.label}
+                id={fieldId(field.name)}
                 value={form[field.name] ?? ''}
                 onChange={(e) => update(field.name, e.target.value)}
                 required={field.required}
@@ -134,14 +144,14 @@ export default function ResourceSection({
               </select>
             ) : field.type === 'checkbox' ? (
               <input
-                aria-label={field.label}
+                id={fieldId(field.name)}
                 type="checkbox"
                 checked={Boolean(form[field.name])}
                 onChange={(e) => update(field.name, e.target.checked)}
               />
             ) : (
               <input
-                aria-label={field.label}
+                id={fieldId(field.name)}
                 type={field.type || 'text'}
                 step={field.type === 'number' ? '1' : undefined}
                 placeholder={field.placeholder}
@@ -150,46 +160,55 @@ export default function ResourceSection({
                 required={field.required}
               />
             )}
-          </label>
+          </div>
         ))}
-        <button type="submit" disabled={busy}>{busy ? 'Saving…' : `Add ${title.replace(/s$/, '').toLowerCase()}`}</button>
+        <div className="eia-field">
+          <button type="submit" disabled={busy}>
+            {busy ? 'Saving…' : `Add ${title.replace(/s$/, '').toLowerCase()}`}
+          </button>
+        </div>
       </form>
-      <table width="100%" cellPadding="8" style={{ borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            {columns.map((column) => (
-              <th key={column.key} align="left">{column.label}</th>
-            ))}
-            {rowActions && <th align="left">Actions</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.id} style={{ borderTop: '1px solid #ddd' }}>
-              {columns.map((column) => (
-                <td key={column.key}>
-                  {column.render ? column.render(row) : formatValue(row[column.key])}
-                </td>
-              ))}
-              {rowActions && (
-                <td>
-                  {rowActions(row, async () => {
-                    await load();
-                    if (onChanged) {
-                      onChanged();
-                    }
-                  }, (e) => setError(errorMessage(e)))}
-                </td>
-              )}
-            </tr>
-          ))}
-          {rows.length === 0 && !loading && (
+
+      <div className="eia-table-wrap">
+        <table className="eia-table">
+          <thead>
             <tr>
-              <td colSpan={columns.length + (rowActions ? 1 : 0)}>No records yet.</td>
+              {columns.map((column) => (
+                <th key={column.key}>{column.label}</th>
+              ))}
+              {rowActions && <th>Actions</th>}
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id}>
+                {columns.map((column) => (
+                  <td key={column.key}>
+                    {column.render ? column.render(row) : formatValue(row[column.key])}
+                  </td>
+                ))}
+                {rowActions && (
+                  <td>
+                    {rowActions(row, async () => {
+                      await load();
+                      if (onChanged) {
+                        onChanged();
+                      }
+                    }, (e) => setError(errorMessage(e)))}
+                  </td>
+                )}
+              </tr>
+            ))}
+            {rows.length === 0 && !loading && (
+              <tr>
+                <td className="eia-muted" colSpan={columns.length + (rowActions ? 1 : 0)}>
+                  No records yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

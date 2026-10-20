@@ -106,7 +106,7 @@ test('records a cession within capacity and rejects one that exceeds the contrac
   });
 
   await page.goto('/');
-  await page.getByRole('row').filter({ hasText: 'XOL-2026-00091' }).getByRole('button', { name: 'Select' }).click();
+  await page.locator('.eia-record-list button').filter({ hasText: 'XOL-2026-00091' }).click();
   await page.getByRole('button', { name: 'Cessions', exact: true }).click();
   await expect(page.getByTestId('cessions-panel')).toBeVisible();
 
@@ -121,6 +121,7 @@ test('records a cession within capacity and rejects one that exceeds the contrac
   await expect(page.getByRole('cell', { name: 'CES-2026-00001' })).toBeVisible();
   await expect(page.getByRole('cell', { name: '240000.0000' })).toBeVisible();
   await expect(page.getByText('Cession recorded.')).toBeVisible();
+  await expect(page.getByTestId('summary-ceded-loss')).toHaveText('$240,000');
 
   // The same ceded loss is now 240000; a further 900000 pushes the tower over its limit.
   await page.getByLabel('Claim reference').fill('CLM-2026-0008');
