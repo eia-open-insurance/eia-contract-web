@@ -23,6 +23,7 @@ selected record on the right.
 | Security | List and add security; over-collateralisation needs an approval reference |
 | Cessions | List and record cessions with policy/claim references and ceded premium/loss |
 | Technical accounts | Period statements newest period first, with ceded premium/loss/commission totals, an issued-only outstanding balance, a create form with a computed balance preview, and confirmed Issue/Settle actions |
+| Cash calls | Interim funding requests newest period first, with requested/issued counts, issued and settled amounts, overdue due dates, a create form, and confirmed Issue/Cancel/Settle actions |
 | Bordereaux | Cedent period submissions newest period first with received/processed counts, premium/loss/line totals, a create form, and confirmed Process/Fail actions; processed rows link to the technical account they created |
 | Commutation | Propose, approve, and execute a commutation |
 | Activity | Event-derived, append-only timeline for the selected contract |
@@ -95,6 +96,26 @@ the contract remains the source of its terms, and FS-RI/SAP own the posted
 amounts — and contains load, create, and conflict failures locally so the
 contract record stays usable.
 
+The **Cash calls** tab (directly after Technical accounts) reads
+`GET /api/v1/contracts/{contractId}/cash-calls` with the tenant header and sorts
+the requests newest period first by period end (then period start and call
+number). Each row shows the call number, period, amount and currency, due date,
+status, notes, and the lifecycle actions: a REQUESTED call can be **issued** or
+**cancelled**, and an ISSUED call can be **settled**. Every action asks for
+confirmation and then PATCHes
+`/api/v1/contracts/{contractId}/cash-calls/{cashCallId}/status` with
+`{ "status": "ISSUED" }`, `{ "status": "CANCELLED" }`, or
+`{ "status": "SETTLED" }`; a dismissed confirmation sends nothing. The create
+form posts `periodStart`, `periodEnd`, `amount` (strictly positive, as a 4-dp
+decimal string), `currency`, `dueDate`, and optional `notes` to the collection
+path. Five summary cards show the requested count, issued count, outstanding
+issued amount (ISSUED only), settled amount, and the number of open calls whose
+due date has passed. The tab carries a context note — a cash call requests
+funding from the cedent or reinsurer, it is not a Payment, and Payment and FS-RI
+own execution — and contains load, create, status, and 409 failures locally so
+the contract record stays usable; a 409 on a status command reloads the row so it
+reflects whatever state won the race.
+
 The **Bordereaux** tab reads `GET /api/v1/contracts/{contractId}/bordereaux`
 with the tenant header and sorts the submissions newest period first by period
 end (then period start and bordereau number). Each row shows the bordereau
@@ -139,8 +160,16 @@ summary totals (issued-only outstanding balance), the create form's local period
 validation and exact POST payload with the computed balance preview, the
 confirmed issue/settle PATCH payloads (including a dismissed confirmation), the
 empty state and context note, a contained load failure, and a 409 duplicate-period
-response that preserves the form. `tests/bordereaux.spec.js` covers the
-newest-period-first listing with the linked technical account and summary
+response that preserves the form. `tests/cash-calls.spec.js` covers the
+newest-period-first listing with the requested/issued counts, issued and settled
+amounts, overdue due dates, correct actions and status tones, and the context
+note; the create form's local period/positive-amount validation and exact POST
+payload with notes; the confirmed issue/settle PATCH payloads (including a
+dismissed confirmation); the confirmed cancel PATCH and its terminal state; the
+loading, empty, and contained load-failure states; a 409 status race that reloads
+the row; and a 409 create conflict that preserves the form.
+`tests/bordereaux.spec.js` covers the newest-period-first listing with the linked
+technical account and summary
 counts/totals, the create form's local period validation and exact POST payload
 (received date, amounts, lines, notes), the confirmed process PATCH and its
 linked-account message/tab navigation, fail with and without a note, the empty

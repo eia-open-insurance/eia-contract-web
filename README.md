@@ -20,10 +20,10 @@ from the shell): a page header with the assumed-book badge and primary **Create
 contract** action, a contract register on the left, and a selected-contract panel
 with status and bound state, the bind action, a limit/premium/loss/share summary,
 and tabs for Overview, Layers, Participants (with the share balance per layer),
-Terms, Security, Cessions, Technical accounts, Bordereaux, and Commutation
-(propose, approve, execute). The Overview tab lists the bind preconditions from
-`GET /api/v1/contracts/{id}/bind-eligibility`; **Bind contract** is enabled only
-when the contract is PLACED and every check passes.
+Terms, Security, Cessions, Technical accounts, Cash calls, Bordereaux, and
+Commutation (propose, approve, execute). The Overview tab lists the bind
+preconditions from `GET /api/v1/contracts/{id}/bind-eligibility`; **Bind
+contract** is enabled only when the contract is PLACED and every check passes.
 
 Record discovery is URL-driven: `?record={id}` selects a contract and `?new=1`
 opens the create form (the remote listens for `popstate`, so shell global-search
@@ -59,6 +59,22 @@ technical account is a period statement, the contract remains the source of its
 terms, and FS-RI/SAP own the posted amounts; load failures stay inside the tab
 and never block the contract record.
 
+The **Cash calls** tab sits directly after Technical accounts and lists the
+selected contract's interim funding requests newest period first from
+`GET /api/v1/contracts/{id}/cash-calls`, with the call number, period,
+amount/currency, due date, status, notes, and action. A create form posts the
+period start/end, amount, currency, due date, and optional notes to the same
+path; the amount must be positive and is sent as a 4-dp decimal string. Summary
+cards show the requested count, issued count, outstanding issued amount, settled
+amount, and the number of open calls whose due date has passed. **Issue** and
+**Cancel** are the alternatives for a REQUESTED call; an ISSUED call exposes
+**Settle**. Each is a confirmed PATCH to
+`/cash-calls/{cashCallId}/status` with `{ "status": "ISSUED" | "CANCELLED" |
+"SETTLED" }`. A context note explains that a cash call requests funding from the
+cedent or reinsurer, is not a Payment, and that Payment and FS-RI own execution.
+Load, create, status, and 409 failures stay inside the tab and never block the
+contract record.
+
 The **Bordereaux** tab lists the cedent's period submissions newest period first
 from `GET /api/v1/contracts/{id}/bordereaux`, with the bordereau number, period,
 received date, line count, premium, loss, commission, status, linked technical
@@ -82,7 +98,10 @@ party-label resolution and fallback, and cross-links), and linked-document
 visibility (query and tenant header, document links, empty state, contained
 error, and non-blocking fetch), plus technical accounts (newest-first listing,
 create payload and balance preview, confirmed issue/settle payloads, empty,
-load-error, and 409 states), and bordereaux (newest-first listing and summary
+load-error, and 409 states), cash calls (newest-first listing and summary
+counts/amounts/overdue due dates, create payload and local period/amount
+validation, confirmed issue, settle, and cancel payloads, empty, load-error, and
+create/status 409 states), and bordereaux (newest-first listing and summary
 counts/totals, create payload and local period validation, confirmed process
 with the linked technical account, fail with and without a note, empty,
 load-error, and create/status 409 states). `IMPLEMENTATION.md` records the

@@ -9,6 +9,7 @@ import ResourceSection from './ResourceSection';
 import ParticipantsPanel from './ParticipantsPanel';
 import CessionsPanel from './CessionsPanel';
 import TechnicalAccountsPanel from './TechnicalAccountsPanel';
+import CashCallsPanel from './CashCallsPanel';
 import BordereauxPanel from './BordereauxPanel';
 import ActivityPanel from './ActivityPanel';
 import { activityEndpoint, activityItems } from './activity';
@@ -107,6 +108,7 @@ const TABS = [
   'Security',
   'Cessions',
   'Technical accounts',
+  'Cash calls',
   'Bordereaux',
   'Commutation',
   'Activity'
@@ -1284,6 +1286,14 @@ export default function App() {
 
               {tab === 'Technical accounts' && (
                 <TechnicalAccountsPanel
+                  contractId={selectedId}
+                  currency={currency}
+                  onChanged={refresh}
+                />
+              )}
+
+              {tab === 'Cash calls' && (
+                <CashCallsPanel
                   contractId={selectedId}
                   currency={currency}
                   onChanged={refresh}

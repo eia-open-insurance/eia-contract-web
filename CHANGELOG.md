@@ -66,6 +66,23 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
   totals, create payload and balance preview, confirmed issue/settle payloads,
   the empty state and context note, a contained load failure, and a 409
   duplicate-period response that preserves the form.
+- **Cash calls** tab, directly after Technical accounts: lists the selected
+  contract's interim funding requests newest period first from
+  `GET /api/v1/contracts/{id}/cash-calls`, with call number, period,
+  amount/currency, due date, status, notes, and action. A create form posts the
+  period start/end, a strictly positive amount, currency, due date, and optional
+  notes. Summary cards show the requested and issued counts, the outstanding
+  issued amount, the settled amount, and the number of open calls past their due
+  date. Confirmed **Issue** and **Cancel** actions on a REQUESTED call and
+  **Settle** on an ISSUED call PATCH
+  `/api/v1/contracts/{contractId}/cash-calls/{cashCallId}/status`. A context note
+  states that a cash call requests funding from the cedent or reinsurer, is not a
+  Payment, and that Payment and FS-RI own execution.
+- Playwright coverage for cash calls: newest-first listing with summary counts,
+  issued/settled amounts, overdue due dates, status tones, actions, and the
+  context note; create payload and local period/positive-amount validation;
+  confirmed issue, settle, and cancel payloads; loading, empty, contained
+  load-failure, and 409 states.
 - **Bordereaux** tab: lists the selected contract's cedent period submissions
   newest period first with bordereau number, period, received date, line count,
   premium, loss, commission, status, linked technical account, and action. A
