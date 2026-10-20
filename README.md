@@ -20,8 +20,8 @@ from the shell): a page header with the assumed-book badge and primary **Create
 contract** action, a contract register on the left, and a selected-contract panel
 with status and bound state, the bind action, a limit/premium/loss/share summary,
 and tabs for Overview, Layers, Participants (with the share balance per layer),
-Terms, Security, Cessions, Bordereaux, and Commutation (propose, approve,
-execute). The Overview tab lists the bind preconditions from
+Terms, Security, Cessions, Technical accounts, Bordereaux, and Commutation
+(propose, approve, execute). The Overview tab lists the bind preconditions from
 `GET /api/v1/contracts/{id}/bind-eligibility`; **Bind contract** is enabled only
 when the contract is PLACED and every check passes.
 
@@ -45,13 +45,29 @@ empty state and an evidence note. Documents are evidence and never change the
 contract; a slow or failing Document API renders inside the card without
 blocking the record.
 
+The **Technical accounts** tab lists the selected contract's period statements
+newest period first from `GET /api/v1/contracts/{id}/technical-accounts`, with
+the account number, period, ceded premium, ceded losses, commission, balance,
+status, and action. A create form posts the period start/end, currency, ceded
+premium, ceded losses, commission, and other charges to the same path and shows
+the computed balance preview (`ceded premium − ceded losses − commission + other
+charges`). Summary cards total ceded premium, ceded losses, commission, the
+outstanding balance of ISSUED statements only, and the account count. **Issue**
+(DRAFT → ISSUED) and **Settle** (ISSUED → SETTLED) are confirmed PATCHes to
+`/technical-accounts/{accountId}/status`. A context note explains that a
+technical account is a period statement, the contract remains the source of its
+terms, and FS-RI/SAP own the posted amounts; load failures stay inside the tab
+and never block the contract record.
+
 `npm start` serves the remote on port 3003 with `/api` proxied to the domain
 service on 8086. `npm test` runs the Playwright suite covering create,
 layer/participant/bind, the over-100% share rejection, the cession/capacity flow,
 record discovery (deep links, queue filtering, predictive party lookup,
 party-label resolution and fallback, and cross-links), and linked-document
 visibility (query and tenant header, document links, empty state, contained
-error, and non-blocking fetch). `IMPLEMENTATION.md` records the screens, tests,
+error, and non-blocking fetch), plus technical accounts (newest-first listing,
+create payload and balance preview, confirmed issue/settle payloads, empty,
+load-error, and 409 states). `IMPLEMENTATION.md` records the screens, tests,
 and remaining gaps.
 
 ## Responsibilities

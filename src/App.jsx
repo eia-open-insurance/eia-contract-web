@@ -8,6 +8,7 @@ import { partyEndpoint, partyRecordLabel } from './party';
 import ResourceSection from './ResourceSection';
 import ParticipantsPanel from './ParticipantsPanel';
 import CessionsPanel from './CessionsPanel';
+import TechnicalAccountsPanel from './TechnicalAccountsPanel';
 import ActivityPanel from './ActivityPanel';
 import { activityEndpoint, activityItems } from './activity';
 import {
@@ -110,6 +111,7 @@ const TABS = [
   'Terms',
   'Security',
   'Cessions',
+  'Technical accounts',
   'Bordereaux',
   'Commutation',
   'Activity'
@@ -1283,6 +1285,14 @@ export default function App() {
 
               {tab === 'Cessions' && (
                 <CessionsPanel contractId={selectedId} onChanged={refresh} />
+              )}
+
+              {tab === 'Technical accounts' && (
+                <TechnicalAccountsPanel
+                  contractId={selectedId}
+                  currency={currency}
+                  onChanged={refresh}
+                />
               )}
 
               {tab === 'Bordereaux' && (

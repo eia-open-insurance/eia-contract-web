@@ -51,6 +51,21 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 - Playwright coverage for the aggregate path and tenant header, newest-first
   ordering and rendering, the empty state, a contained 503, the contract payload
   facts, refetching on selection, and the card refresh.
+- **Technical accounts** tab: lists the selected contract's period statements
+  newest period first with account number, period, ceded premium, ceded losses,
+  commission, balance, status, and action; a create form posts period start/end,
+  currency, ceded premium, ceded losses, commission, and other charges and shows
+  the computed balance preview (ceded premium − ceded losses − commission + other
+  charges); summary cards total ceded premium, ceded losses, commission, the
+  outstanding balance of ISSUED statements only, and the account count. Confirmed
+  **Issue** (DRAFT → ISSUED) and **Settle** (ISSUED → SETTLED) actions PATCH
+  `/api/v1/contracts/{contractId}/technical-accounts/{accountId}/status`. A
+  context note states that a technical account is a period statement, the
+  contract remains the source of its terms, and FS-RI/SAP own the posted amounts.
+- Playwright coverage for technical accounts: newest-first listing and summary
+  totals, create payload and balance preview, confirmed issue/settle payloads,
+  the empty state and context note, a contained load failure, and a 409
+  duplicate-period response that preserves the form.
 
 ### Changed
 

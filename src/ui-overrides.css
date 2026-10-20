@@ -95,3 +95,10 @@
   border-radius: 3px;
   padding: 1px 4px;
 }
+
+/* Technical accounts: five summary cards fit one row on a wide workbench. */
+@media (min-width: 1101px) {
+  .eia-summary-grid.technical-account-summary {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}

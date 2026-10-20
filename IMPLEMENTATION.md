@@ -22,6 +22,7 @@ selected record on the right.
 | Terms | List and add terms with a term code, value, source clause, and effective dates |
 | Security | List and add security; over-collateralisation needs an approval reference |
 | Cessions | List and record cessions with policy/claim references and ceded premium/loss |
+| Technical accounts | Period statements newest period first, with ceded premium/loss/commission totals, an issued-only outstanding balance, a create form with a computed balance preview, and confirmed Issue/Settle actions |
 | Bordereaux | List and register bordereaux with period, source format, and line counts |
 | Commutation | Propose, approve, and execute a commutation |
 | Activity | Event-derived, append-only timeline for the selected contract |
@@ -74,6 +75,26 @@ loading, error, empty, and refresh states and carries an
 event-derived/append-only note: the contract record stays the source of truth,
 so a slow or unavailable event service never blocks the record.
 
+The **Technical accounts** tab reads
+`GET /api/v1/contracts/{contractId}/technical-accounts` with the tenant header and
+sorts the statements newest period first by period end (then period start and
+account number). Each row shows the account number, period, ceded premium, ceded
+losses, commission, balance, status, and the one available action: a DRAFT can
+be **issued** and an ISSUED statement can be **settled**. Both actions ask for
+confirmation and then PATCH
+`/api/v1/contracts/{contractId}/technical-accounts/{accountId}/status` with
+`{ "status": "ISSUED" }` or `{ "status": "SETTLED" }`; a dismissed confirmation
+sends nothing. The create form posts `periodStart`, `periodEnd`, `currency`,
+`cededPremium`, `cededLosses`, `commission`, and `otherCharges` to the collection
+path as 4-dp decimal strings and previews the balance as ceded premium minus
+ceded losses and commission, plus other charges; a positive balance is due to the
+reinsurer. Five summary cards total ceded premium, ceded losses, commission, the
+outstanding balance of ISSUED statements only, and the account count. The tab
+carries a statement context note — a technical account is a period statement,
+the contract remains the source of its terms, and FS-RI/SAP own the posted
+amounts — and contains load, create, and conflict failures locally so the
+contract record stays usable.
+
 ## Tests
 
 `tests/contract.spec.js` (operational layout and create via the primary action),
@@ -88,8 +109,14 @@ query and tenant header, document links, refetching on selection, the empty
 state, a contained error, and rendering the contract while the Document API is
 still in flight. `tests/activity.spec.js` covers the aggregate path and tenant
 header, newest-first ordering and rendering, the empty state, a contained 503,
-the contract payload facts, refetching on selection, and the card refresh. Run
-with `npm test`; the Playwright config starts the dev server on port 3003.
+the contract payload facts, refetching on selection, and the card refresh.
+`tests/technical-accounts.spec.js` covers the newest-period-first listing and
+summary totals (issued-only outstanding balance), the create form's local period
+validation and exact POST payload with the computed balance preview, the
+confirmed issue/settle PATCH payloads (including a dismissed confirmation), the
+empty state and context note, a contained load failure, and a 409 duplicate-period
+response that preserves the form. Run with `npm test`; the Playwright config
+starts the dev server on port 3003.
 
 ## Remaining gaps
 
