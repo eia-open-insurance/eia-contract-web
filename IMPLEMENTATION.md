@@ -13,9 +13,10 @@ selected record on the right.
 
 | Screen | Behaviour |
 |---|---|
-| Register | Lists contracts with number, cedent, reinsurer, and status; selecting one opens it |
-| Create contract | Primary header action; opens a compact create form for a draft contract |
-| Overview | Contract facts, lifecycle transition, and the bind preconditions |
+| Register | Lists contracts with number, cedent, reinsurer, and status; selecting one opens it and pushes `?record={id}` |
+| Queue filter | Prominent client-side filter over number, type, cedent, and status, with a result count and Clear action |
+| Create contract | Primary header action (`?new=1`); opens a compact create form for a draft contract with predictive cedent/reinsurer `EntityPicker`s backed by `/api/v1/parties/search` |
+| Overview | Contract facts with party cross-links, lifecycle transition, bind preconditions, the "Why this matters" context panel, and related assumed claims/retrocessions |
 | Layers | List and add layers (number, type, attachment, limit, basis, currency, effective dates, tower note) |
 | Participants | List and add participations; shows the risk-bearing share total per layer and whether it is balanced |
 | Terms | List and add terms with a term code, value, source clause, and effective dates |
@@ -34,14 +35,29 @@ Money and percentages are rendered as the API returns them (decimal strings), so
 no precision is lost in the browser. Errors are shown as `CODE: message` from the
 structured error body.
 
+Record discovery is URL-driven. The remote reads `?record={id}` and `?new=1` on
+mount and listens for `popstate`; selecting a contract, opening create, and
+cancelling create update the URL through a small `src/navigation.js` helper
+(`pushState` plus a `PopStateEvent`, with `window.location.assign` as the
+fallback). The queue filter is client-side over the loaded register. The create
+form shows the selected party number/name and links to `/party?record={id}`.
+Overview links the cedent and reinsurer, explains that assumed claims and
+retrocessions attach to the contract while actual cessions remain FS-RI-owned,
+and fetches related records from
+`/api/v1/assumed-claims/search?q={contractId}&limit=5` and
+`/api/v1/retrocessions/search?q={contractId}&limit=5` with the ASSUMED book
+header.
+
 ## Tests
 
 `tests/contract.spec.js` (operational layout and create via the primary action),
 `tests/layers-participants.spec.js` (stateful mocked API: record layer, record
 participants, watch the balance and bind enablement, bind; then an over-100%
 rejection), `tests/cession.spec.js` (record a cession, then a capacity
-rejection). Run with `npm test`; the Playwright config starts the dev server on
-port 3003.
+rejection), and `tests/discovery.spec.js` (deep-link and popstate record
+selection, `?new=1`, queue filtering, both predictive party pickers and their
+POST payload, and the Overview cross-links/related records). Run with
+`npm test`; the Playwright config starts the dev server on port 3003.
 
 ## Remaining gaps
 

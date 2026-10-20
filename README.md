@@ -25,10 +25,22 @@ execute). The Overview tab lists the bind preconditions from
 `GET /api/v1/contracts/{id}/bind-eligibility`; **Bind contract** is enabled only
 when the contract is PLACED and every check passes.
 
+Record discovery is URL-driven: `?record={id}` selects a contract and `?new=1`
+opens the create form (the remote listens for `popstate`, so shell global-search
+results and browser history both land on the right record). A prominent queue
+filter narrows the register by contract number, type, cedent, or status without
+a round trip. The create form uses the shared predictive `EntityPicker` against
+`/api/v1/parties/search` for the cedent and reinsurer, shows the party number and
+name, and links the selected party to `/party?record={id}`. Overview links both
+parties, explains that assumed claims and retrocessions attach to the contract
+while actual cessions remain FS-RI-owned, and lists related assumed claims and
+retrocessions found through their search endpoints.
+
 `npm start` serves the remote on port 3003 with `/api` proxied to the domain
 service on 8086. `npm test` runs the Playwright suite covering create,
-layer/participant/bind, the over-100% share rejection, and the cession/capacity
-flow. `IMPLEMENTATION.md` records the screens, tests, and remaining gaps.
+layer/participant/bind, the over-100% share rejection, the cession/capacity flow,
+and record discovery (deep links, queue filtering, predictive party lookup, and
+cross-links). `IMPLEMENTATION.md` records the screens, tests, and remaining gaps.
 
 ## Responsibilities
 

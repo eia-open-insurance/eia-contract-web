@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import './ui.css';
 import './ui-overrides.css';
 import { apiFetch, errorMessage, APPROVER, TENANT } from './api';
+import EntityPicker from './EntityPicker';
+import { navigate } from './navigation';
 import ResourceSection from './ResourceSection';
 import ParticipantsPanel from './ParticipantsPanel';
 import CessionsPanel from './CessionsPanel';
@@ -59,6 +61,10 @@ const BORDEREAU_TYPES = [
 
 const SOURCE_FORMATS = ['CSV', 'XLSX', 'XML', 'JSON', 'MANUAL'];
 
+const PARTY_SEARCH_ENDPOINT = '/api/v1/parties/search';
+const ASSUMED_CLAIMS_SEARCH = '/api/v1/assumed-claims/search';
+const RETROCESSIONS_SEARCH = '/api/v1/retrocessions/search';
+
 const COMMUTATION_TYPES = ['FULL', 'PARTIAL', 'LOSS_PORTFOLIO', 'BUYOUT', 'NOVATION'];
 
 const COMMUTATION_BASES = ['NEGOTIATED', 'CONTRACTUAL', 'INDUCED', 'REGULATORY', 'INSOLVENCY'];
@@ -97,8 +103,8 @@ const TABS = [
 const EMPTY_FORM = {
   contractNumber: '',
   contractType: 'EXCESS_OF_LOSS',
-  cedentPartyId: '33333333-3333-7333-8333-333333333333',
-  reinsurerPartyId: '44444444-4444-7444-8444-444444444444',
+  cedentPartyId: '',
+  reinsurerPartyId: '',
   effectiveDate: '2026-01-01',
   expirationDate: '2026-12-31',
   currency: 'USD'
@@ -157,9 +163,57 @@ function sumBy(rows, selector) {
   return rows.reduce((total, row) => total + Number(selector(row) || 0), 0);
 }
 
+function searchItems(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  return payload && Array.isArray(payload.items) ? payload.items : [];
+}
+
+function contractMatchesFilter(contract, needle) {
+  const values = [
+    contract.contractNumber,
+    contract.contractType,
+    String(contract.contractType || '').replace(/_/g, ' '),
+    contract.cedentDisplayName,
+    contract.cedentPartyId,
+    contract.status
+  ];
+  return values.some((value) => String(value || '').toLowerCase().includes(needle));
+}
+
+function partyLabel(item) {
+  if (!item) {
+    return '';
+  }
+  return [item.label, item.secondary].filter(Boolean).join(' · ');
+}
+
+function PartyLink({ partyId, label, testId }) {
+  if (!partyId) {
+    return <span>—</span>;
+  }
+  const href = `/party?record=${partyId}`;
+  return (
+    <a
+      href={href}
+      data-testid={testId}
+      title={`Open party ${partyId}`}
+      onClick={(event) => {
+        event.preventDefault();
+        navigate(href);
+      }}
+    >
+      {label || shortId(partyId)}
+    </a>
+  );
+}
+
 export default function App() {
   const [contracts, setContracts] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [partyLabels, setPartyLabels] = useState({ cedent: '', reinsurer: '' });
+  const [filter, setFilter] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState('Overview');
@@ -172,8 +226,15 @@ export default function App() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [showCreate, setShowCreate] = useState(false);
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
+  const [related, setRelated] = useState({ assumedClaims: [], retrocessions: [] });
+  const [relatedLoading, setRelatedLoading] = useState(false);
+  const [routeVersion, setRouteVersion] = useState(0);
 
   const selected = contracts.find((contract) => contract.id === selectedId) || null;
+  const needle = filter.trim().toLowerCase();
+  const visibleContracts = needle
+    ? contracts.filter((contract) => contractMatchesFilter(contract, needle))
+    : contracts;
 
   async function load() {
     const response = await fetch('/api/v1/contracts', { headers: { 'X-EIA-Tenant': TENANT } });
@@ -184,6 +245,30 @@ export default function App() {
   useEffect(() => {
     load().catch((e) => setError(e.message));
   }, []);
+
+  useEffect(() => {
+    const onPop = () => setRouteVersion((value) => value + 1);
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const recordId = params.get('record');
+    const wantsCreate = params.get('new') === '1';
+    setShowCreate(wantsCreate);
+    if (recordId) {
+      const match = contracts.find((contract) => contract.id === recordId);
+      if (match && match.id !== selectedId) {
+        setSelectedId(match.id);
+        setTab('Overview');
+        setBindMessage('');
+        setTransitionTo('');
+      }
+    } else if (routeVersion > 0 && !wantsCreate) {
+      setSelectedId(null);
+    }
+  }, [contracts, routeVersion, selectedId]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -238,6 +323,33 @@ export default function App() {
     };
   }, [selectedId, refreshToken]);
 
+  useEffect(() => {
+    if (!selectedId) {
+      setRelated({ assumedClaims: [], retrocessions: [] });
+      setRelatedLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    const search = (path) =>
+      apiFetch(path, { headers: { 'X-EIA-Book': 'ASSUMED' } })
+        .then(searchItems)
+        .catch(() => []);
+    setRelatedLoading(true);
+    Promise.all([
+      search(`${ASSUMED_CLAIMS_SEARCH}?q=${encodeURIComponent(selectedId)}&limit=5`),
+      search(`${RETROCESSIONS_SEARCH}?q=${encodeURIComponent(selectedId)}&limit=5`)
+    ]).then(([assumedClaims, retrocessions]) => {
+      if (cancelled) {
+        return;
+      }
+      setRelated({ assumedClaims, retrocessions });
+      setRelatedLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, refreshToken]);
+
   function refresh() {
     setRefreshToken((value) => value + 1);
   }
@@ -268,7 +380,9 @@ export default function App() {
         return;
       }
       setForm(EMPTY_FORM);
+      setPartyLabels({ cedent: '', reinsurer: '' });
       setShowCreate(false);
+      navigate(selectedId ? `/contract?record=${selectedId}` : '/contract', { replace: true });
       await load();
     } catch (e) {
       setError(e.message);
@@ -281,11 +395,27 @@ export default function App() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function selectParty(field, id, item) {
+    update(field === 'cedent' ? 'cedentPartyId' : 'reinsurerPartyId', id);
+    setPartyLabels((current) => ({ ...current, [field]: item ? partyLabel(item) : '' }));
+  }
+
+  function openCreate() {
+    setShowCreate(true);
+    navigate('/contract?new=1');
+  }
+
+  function closeCreate() {
+    setShowCreate(false);
+    navigate(selectedId ? `/contract?record=${selectedId}` : '/contract');
+  }
+
   function selectContract(contract) {
     setSelectedId(contract.id);
     setTab('Overview');
     setBindMessage('');
     setTransitionTo('');
+    navigate(`/contract?record=${contract.id}`);
   }
 
   async function bind() {
@@ -355,11 +485,30 @@ export default function App() {
           <button type="button" className="eia-btn-ghost" onClick={reloadWorkspace}>
             Refresh
           </button>
-          <button type="button" aria-expanded={showCreate} onClick={() => setShowCreate((value) => !value)}>
+          <button type="button" aria-expanded={showCreate} onClick={() => (showCreate ? closeCreate() : openCreate())}>
             Create contract
           </button>
         </div>
       </header>
+
+      <div className="eia-toolbar eia-queue-search" role="search" aria-label="Contract queue filter">
+        <input
+          type="search"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder="Filter contracts by number, type, cedent, or status…"
+          aria-label="Filter contracts"
+          autoComplete="off"
+        />
+        {filter && (
+          <button type="button" className="eia-btn-secondary" onClick={() => setFilter('')}>
+            Clear
+          </button>
+        )}
+        <span className="eia-muted" data-testid="queue-filter-count">
+          {needle ? `${visibleContracts.length} of ${contracts.length} contracts` : `${contracts.length} contracts`}
+        </span>
+      </div>
 
       {error && <p role="alert">{error}</p>}
 
@@ -367,7 +516,7 @@ export default function App() {
         <section className="eia-card" aria-label="Create contract" style={{ marginBottom: 16 }}>
           <div className="eia-section-title" style={{ marginTop: 0 }}>
             <h2>New assumed contract</h2>
-            <button type="button" className="eia-btn-ghost" onClick={() => setShowCreate(false)}>
+            <button type="button" className="eia-btn-ghost" onClick={closeCreate}>
               Cancel
             </button>
           </div>
@@ -395,24 +544,46 @@ export default function App() {
               </select>
             </div>
             <div className="eia-field">
-              <label htmlFor="cedent-party">Cedent party id</label>
-              <input
-                id="cedent-party"
-                placeholder="Cedent party id"
+              <label>Cedent</label>
+              <EntityPicker
+                endpoint={PARTY_SEARCH_ENDPOINT}
                 value={form.cedentPartyId}
-                onChange={(e) => update('cedentPartyId', e.target.value)}
-                required
+                valueLabel={partyLabels.cedent}
+                onChange={(id, item) => selectParty('cedent', id, item)}
               />
+              {form.cedentPartyId && (
+                <a
+                  href={`/party?record=${form.cedentPartyId}`}
+                  data-testid="cedent-picker-link"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigate(`/party?record=${form.cedentPartyId}`);
+                  }}
+                >
+                  Open cedent party record
+                </a>
+              )}
             </div>
             <div className="eia-field">
-              <label htmlFor="reinsurer-party">Reinsurer party id</label>
-              <input
-                id="reinsurer-party"
-                placeholder="Reinsurer party id"
+              <label>Reinsurer</label>
+              <EntityPicker
+                endpoint={PARTY_SEARCH_ENDPOINT}
                 value={form.reinsurerPartyId}
-                onChange={(e) => update('reinsurerPartyId', e.target.value)}
-                required
+                valueLabel={partyLabels.reinsurer}
+                onChange={(id, item) => selectParty('reinsurer', id, item)}
               />
+              {form.reinsurerPartyId && (
+                <a
+                  href={`/party?record=${form.reinsurerPartyId}`}
+                  data-testid="reinsurer-picker-link"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigate(`/party?record=${form.reinsurerPartyId}`);
+                  }}
+                >
+                  Open reinsurer party record
+                </a>
+              )}
             </div>
             <div className="eia-field">
               <label htmlFor="effective-date">Effective date</label>
@@ -458,7 +629,7 @@ export default function App() {
             <strong>Contract register</strong>
             <span className="eia-muted">{contracts.length}</span>
           </div>
-          {contracts.map((contract) => {
+          {visibleContracts.map((contract) => {
             const isSelected = contract.id === selectedId;
             return (
               <button
@@ -483,6 +654,11 @@ export default function App() {
           })}
           {contracts.length === 0 && (
             <div className="empty">No contracts yet. Use Create contract to open the first record.</div>
+          )}
+          {contracts.length > 0 && visibleContracts.length === 0 && (
+            <div className="empty" data-testid="queue-filter-empty">
+              No contracts match “{filter.trim()}”. Clear the filter to see the full register.
+            </div>
           )}
         </aside>
 
@@ -581,97 +757,194 @@ export default function App() {
               </nav>
 
               {tab === 'Overview' && (
-                <div className="eia-grid eia-grid-2">
-                  <section className="eia-card" aria-label="Contract details">
-                    <h3>Contract details</h3>
-                    <dl className="eia-kv" style={{ marginTop: 8 }}>
-                      <dt>Contract number</dt>
-                      <dd className="eia-mono">{selected.contractNumber}</dd>
-                      <dt>Contract type</dt>
-                      <dd>{selected.contractType}</dd>
-                      <dt>Cedent</dt>
-                      <dd>{selected.cedentDisplayName || shortId(selected.cedentPartyId)}</dd>
-                      <dt>Reinsurer</dt>
-                      <dd>{selected.reinsurerDisplayName || shortId(selected.reinsurerPartyId)}</dd>
-                      <dt>Effective</dt>
-                      <dd>{selected.effectiveDate || '—'}</dd>
-                      <dt>Expiration</dt>
-                      <dd>{selected.expirationDate || '—'}</dd>
-                      <dt>Currency</dt>
-                      <dd>{selected.currency || '—'}</dd>
-                      <dt>Version</dt>
-                      <dd>{selected.version ?? '—'}</dd>
-                    </dl>
-                  </section>
+                <>
+                  <div className="eia-grid eia-grid-2">
+                    <section className="eia-card" aria-label="Contract details">
+                      <h3>Contract details</h3>
+                      <dl className="eia-kv" style={{ marginTop: 8 }}>
+                        <dt>Contract number</dt>
+                        <dd className="eia-mono">{selected.contractNumber}</dd>
+                        <dt>Contract type</dt>
+                        <dd>{selected.contractType}</dd>
+                        <dt>Cedent</dt>
+                        <dd>
+                          <PartyLink
+                            partyId={selected.cedentPartyId}
+                            label={selected.cedentDisplayName}
+                            testId="cedent-party-link"
+                          />
+                        </dd>
+                        <dt>Reinsurer</dt>
+                        <dd>
+                          <PartyLink
+                            partyId={selected.reinsurerPartyId}
+                            label={selected.reinsurerDisplayName}
+                            testId="reinsurer-party-link"
+                          />
+                        </dd>
+                        <dt>Effective</dt>
+                        <dd>{selected.effectiveDate || '—'}</dd>
+                        <dt>Expiration</dt>
+                        <dd>{selected.expirationDate || '—'}</dd>
+                        <dt>Currency</dt>
+                        <dd>{selected.currency || '—'}</dd>
+                        <dt>Version</dt>
+                        <dd>{selected.version ?? '—'}</dd>
+                      </dl>
+                    </section>
 
-                  <section className="eia-card" aria-label="Bind readiness">
-                    <h3>Bind readiness</h3>
-                    {eligibilityError && <p role="alert">{eligibilityError}</p>}
-                    {eligibility ? (
-                      <>
-                        <p className="eia-muted" style={{ marginTop: 6 }}>
-                          {eligibility.bindable
-                            ? 'All checks passed. The contract can be bound.'
-                            : 'Bind is blocked until every check passes.'}
-                        </p>
-                        <ul className="eia-list" aria-label="Bind checks">
-                          {(eligibility.checks || []).map((check) => (
-                            <li key={check.code}>
-                              <span>
-                                <span className={`eia-pill ${check.passed ? 'green' : 'red'}`}>
-                                  {check.passed ? 'PASS' : 'FAIL'}
-                                </span>{' '}
-                                <span className="eia-mono">{check.code}</span>
-                              </span>
-                              <span className="eia-muted">{check.detail}</span>
-                            </li>
-                          ))}
-                          {(!eligibility.checks || eligibility.checks.length === 0) && (
-                            <li><span className="eia-muted">No bind checks reported.</span></li>
-                          )}
-                        </ul>
-                      </>
-                    ) : (
-                      !eligibilityError && <p className="eia-muted">Loading bind checks…</p>
-                    )}
-                  </section>
-
-                  <section className="eia-card" aria-label="Lifecycle">
-                    <h3>Lifecycle</h3>
-                    <p className="eia-muted" style={{ marginTop: 6 }}>
-                      {nextStatuses.length
-                        ? `Next allowed states from ${selected.status}.`
-                        : `No further transitions from ${selected.status}.`}
-                    </p>
-                    {nextStatuses.length > 0 && (
-                      <div className="eia-form-grid" style={{ marginTop: 6 }}>
-                        <div className="eia-field">
-                          <label htmlFor="transition-status">Transition to</label>
-                          <select
-                            id="transition-status"
-                            value={transitionTo}
-                            onChange={(e) => setTransitionTo(e.target.value)}
-                          >
-                            <option value="">—</option>
-                            {nextStatuses.map((status) => (
-                              <option key={status} value={status}>{status}</option>
+                    <section className="eia-card" aria-label="Bind readiness">
+                      <h3>Bind readiness</h3>
+                      {eligibilityError && <p role="alert">{eligibilityError}</p>}
+                      {eligibility ? (
+                        <>
+                          <p className="eia-muted" style={{ marginTop: 6 }}>
+                            {eligibility.bindable
+                              ? 'All checks passed. The contract can be bound.'
+                              : 'Bind is blocked until every check passes.'}
+                          </p>
+                          <ul className="eia-list" aria-label="Bind checks">
+                            {(eligibility.checks || []).map((check) => (
+                              <li key={check.code}>
+                                <span>
+                                  <span className={`eia-pill ${check.passed ? 'green' : 'red'}`}>
+                                    {check.passed ? 'PASS' : 'FAIL'}
+                                  </span>{' '}
+                                  <span className="eia-mono">{check.code}</span>
+                                </span>
+                                <span className="eia-muted">{check.detail}</span>
+                              </li>
                             ))}
-                          </select>
+                            {(!eligibility.checks || eligibility.checks.length === 0) && (
+                              <li><span className="eia-muted">No bind checks reported.</span></li>
+                            )}
+                          </ul>
+                        </>
+                      ) : (
+                        !eligibilityError && <p className="eia-muted">Loading bind checks…</p>
+                      )}
+                    </section>
+
+                    <section className="eia-card" aria-label="Lifecycle">
+                      <h3>Lifecycle</h3>
+                      <p className="eia-muted" style={{ marginTop: 6 }}>
+                        {nextStatuses.length
+                          ? `Next allowed states from ${selected.status}.`
+                          : `No further transitions from ${selected.status}.`}
+                      </p>
+                      {nextStatuses.length > 0 && (
+                        <div className="eia-form-grid" style={{ marginTop: 6 }}>
+                          <div className="eia-field">
+                            <label htmlFor="transition-status">Transition to</label>
+                            <select
+                              id="transition-status"
+                              value={transitionTo}
+                              onChange={(e) => setTransitionTo(e.target.value)}
+                            >
+                              <option value="">—</option>
+                              {nextStatuses.map((status) => (
+                                <option key={status} value={status}>{status}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="eia-field">
+                            <button
+                              type="button"
+                              className="eia-btn-secondary"
+                              onClick={transition}
+                              disabled={!transitionTo}
+                            >
+                              Apply transition
+                            </button>
+                          </div>
                         </div>
-                        <div className="eia-field">
-                          <button
-                            type="button"
-                            className="eia-btn-secondary"
-                            onClick={transition}
-                            disabled={!transitionTo}
-                          >
-                            Apply transition
-                          </button>
+                      )}
+                    </section>
+                  </div>
+
+                  <div className="eia-context-panel" data-testid="why-this-matters">
+                    <h4>Why this matters</h4>
+                    <p>
+                      Assumed claims and retrocessions attach to this contract: claims are advised
+                      against the treaty and retrocessions protect the assumed book. Actual cessions
+                      remain FS-RI-owned; this workbench holds the contract and its business-side
+                      links, not the posted cession amounts.
+                    </p>
+                  </div>
+
+                  <section
+                    className="eia-card"
+                    id="related-records"
+                    aria-label="Related records"
+                    data-testid="related-records"
+                    style={{ marginTop: 14 }}
+                  >
+                    <h3>Related records</h3>
+                    <p className="eia-muted" style={{ marginTop: 4 }}>
+                      Assumed claims and retrocessions whose records reference this contract.
+                    </p>
+                    {relatedLoading ? (
+                      <p className="eia-muted">Loading related records…</p>
+                    ) : (
+                      <>
+                        <div className="eia-related-group" data-testid="related-assumed-claims">
+                          <h4 className="eia-related-title">Assumed claims</h4>
+                          {related.assumedClaims.length === 0 ? (
+                            <p className="eia-muted">No assumed claims reference this contract.</p>
+                          ) : (
+                            <div className="eia-related-list">
+                              {related.assumedClaims.map((item, index) => {
+                                const href = item.href || `/assumed-claims?record=${item.id}`;
+                                return (
+                                  <a
+                                    key={item.id || item.href || `assumed-claim-${index}`}
+                                    className="eia-related-record"
+                                    href={href}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      navigate(href);
+                                    }}
+                                  >
+                                    <b>{item.label}</b>
+                                    <span>{item.secondary}</span>
+                                    {item.status && <em>{item.status}</em>}
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                      </div>
+                        <div className="eia-related-group" data-testid="related-retrocessions">
+                          <h4 className="eia-related-title">Retrocessions</h4>
+                          {related.retrocessions.length === 0 ? (
+                            <p className="eia-muted">No retrocessions reference this contract.</p>
+                          ) : (
+                            <div className="eia-related-list">
+                              {related.retrocessions.map((item, index) => {
+                                const href = item.href || `/retrocession?record=${item.id}`;
+                                return (
+                                  <a
+                                    key={item.id || item.href || `retrocession-${index}`}
+                                    className="eia-related-record"
+                                    href={href}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      navigate(href);
+                                    }}
+                                  >
+                                    <b>{item.label}</b>
+                                    <span>{item.secondary}</span>
+                                    {item.status && <em>{item.status}</em>}
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </>
                     )}
                   </section>
-                </div>
+                </>
               )}
 
               {tab === 'Layers' && (
