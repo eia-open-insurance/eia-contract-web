@@ -66,6 +66,24 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
   totals, create payload and balance preview, confirmed issue/settle payloads,
   the empty state and context note, a contained load failure, and a 409
   duplicate-period response that preserves the form.
+- **Bordereaux** tab: lists the selected contract's cedent period submissions
+  newest period first with bordereau number, period, received date, line count,
+  premium, loss, commission, status, linked technical account, and action. A
+  create form posts period start/end, received date, currency, premium, loss,
+  commission, other charges, line count, and notes. Summary cards total the
+  received and processed counts, premium, loss, and submitted lines. Confirmed
+  **Process** (RECEIVED → PROCESSED) PATCHes
+  `/api/v1/contracts/{contractId}/bordereaux/{bordereauId}/status`, shows the
+  technical account it creates, and links to the Technical accounts tab;
+  **Fail** PATCHes the same path with FAILED and an optional note. PROCESSED and
+  FAILED rows are terminal. A context note states that a bordereau is the
+  cedent's period submission, processing creates a technical account, and the
+  contract remains the source of its terms.
+- Playwright coverage for bordereaux: newest-first listing and summary totals,
+  create payload and local period validation, confirmed process with the linked
+  account, fail with and without a note, the empty state and context note, a
+  contained load failure, a 409 duplicate submission that preserves the form,
+  and a 409 process race that reloads the terminal row.
 
 ### Changed
 

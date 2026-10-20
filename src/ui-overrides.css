@@ -101,4 +101,23 @@
   .eia-summary-grid.technical-account-summary {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
+
+  /* Bordereaux: received/processed plus the period premium, loss, and lines. */
+  .eia-summary-grid.bordereau-summary {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+/* A processed bordereau links to the technical account it created; keep the
+   link compact rather than stretching it like a form submit. */
+.eia-table .eia-btn-ghost {
+  padding: 1px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--eia-blue);
+}
+
+.eia-table .eia-btn-ghost:hover {
+  background: transparent !important;
+  text-decoration: underline;
 }

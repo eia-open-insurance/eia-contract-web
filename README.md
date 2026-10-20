@@ -59,6 +59,21 @@ technical account is a period statement, the contract remains the source of its
 terms, and FS-RI/SAP own the posted amounts; load failures stay inside the tab
 and never block the contract record.
 
+The **Bordereaux** tab lists the cedent's period submissions newest period first
+from `GET /api/v1/contracts/{id}/bordereaux`, with the bordereau number, period,
+received date, line count, premium, loss, commission, status, linked technical
+account, and action. A create form posts the period start/end, received date,
+currency, premium, loss, commission, other charges, line count, and notes to the
+same path. Summary cards total the received and processed counts, premium, loss,
+and submitted lines. A **Process** action on a RECEIVED submission PATCHes
+`/bordereaux/{bordereauId}/status` with `{ "status": "PROCESSED" }` and shows the
+technical account the service creates; **Fail** PATCHes the same path with
+`{ "status": "FAILED" }` and an optional note. PROCESSED and FAILED submissions
+are terminal and show no action. A context note explains that a bordereau is the
+cedent's period submission, processing creates a technical account, and the
+contract remains the source of its terms. Load, create, status, and 409 failures
+stay inside the tab and never block the contract record.
+
 `npm start` serves the remote on port 3003 with `/api` proxied to the domain
 service on 8086. `npm test` runs the Playwright suite covering create,
 layer/participant/bind, the over-100% share rejection, the cession/capacity flow,
@@ -67,8 +82,11 @@ party-label resolution and fallback, and cross-links), and linked-document
 visibility (query and tenant header, document links, empty state, contained
 error, and non-blocking fetch), plus technical accounts (newest-first listing,
 create payload and balance preview, confirmed issue/settle payloads, empty,
-load-error, and 409 states). `IMPLEMENTATION.md` records the screens, tests,
-and remaining gaps.
+load-error, and 409 states), and bordereaux (newest-first listing and summary
+counts/totals, create payload and local period validation, confirmed process
+with the linked technical account, fail with and without a note, empty,
+load-error, and create/status 409 states). `IMPLEMENTATION.md` records the
+screens, tests, and remaining gaps.
 
 ## Responsibilities
 

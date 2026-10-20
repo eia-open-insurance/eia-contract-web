@@ -9,6 +9,7 @@ import ResourceSection from './ResourceSection';
 import ParticipantsPanel from './ParticipantsPanel';
 import CessionsPanel from './CessionsPanel';
 import TechnicalAccountsPanel from './TechnicalAccountsPanel';
+import BordereauxPanel from './BordereauxPanel';
 import ActivityPanel from './ActivityPanel';
 import { activityEndpoint, activityItems } from './activity';
 import {
@@ -69,12 +70,6 @@ const SECURITY_TYPES = [
   'LETTER_OF_CREDIT', 'TRUST_FUND', 'FUNDS_WITHHELD', 'CASH_ADVANCE',
   'PARENT_GUARANTEE', 'BANK_GUARANTEE', 'SECURITIES'
 ];
-
-const BORDEREAU_TYPES = [
-  'PREMIUM', 'CLAIMS', 'CESSION', 'ACCOUNTING', 'LOSS_DEVELOPMENT', 'SECURITY', 'CASH_LOSS'
-];
-
-const SOURCE_FORMATS = ['CSV', 'XLSX', 'XML', 'JSON', 'MANUAL'];
 
 const PARTY_SEARCH_ENDPOINT = '/api/v1/parties/search';
 const ASSUMED_CLAIMS_SEARCH = '/api/v1/assumed-claims/search';
@@ -1296,33 +1291,11 @@ export default function App() {
               )}
 
               {tab === 'Bordereaux' && (
-                <ResourceSection
-                  title="Bordereaux"
-                  description="Cedent bordereaux received for the contract."
-                  resource="bordereaux"
+                <BordereauxPanel
                   contractId={selectedId}
-                  testId="bordereaux-panel"
+                  currency={currency}
                   onChanged={refresh}
-                  columns={[
-                    { key: 'bordereauNumber', label: 'Number' },
-                    { key: 'bordereauType', label: 'Type' },
-                    { key: 'periodFrom', label: 'Period from' },
-                    { key: 'periodTo', label: 'Period to' },
-                    { key: 'lineCount', label: 'Lines' },
-                    { key: 'totalAmount', label: 'Total' },
-                    { key: 'status', label: 'Status' }
-                  ]}
-                  fields={[
-                    { name: 'bordereauType', label: 'Bordereau type', type: 'select', options: BORDEREAU_TYPES, defaultValue: 'CLAIMS', required: true },
-                    { name: 'periodFrom', label: 'Period from', type: 'date', required: true },
-                    { name: 'periodTo', label: 'Period to', type: 'date', required: true },
-                    { name: 'sourceFormat', label: 'Source format', type: 'select', options: SOURCE_FORMATS, defaultValue: 'CSV', required: true },
-                    { name: 'lineCount', label: 'Line count', type: 'number' },
-                    { name: 'validLineCount', label: 'Valid line count', type: 'number' },
-                    { name: 'exceptionCount', label: 'Exception count', type: 'number' },
-                    { name: 'totalAmount', label: 'Total amount' },
-                    { name: 'sourceReference', label: 'Source reference' }
-                  ]}
+                  onOpenTechnicalAccounts={() => setTab('Technical accounts')}
                 />
               )}
 

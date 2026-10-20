@@ -23,7 +23,7 @@ selected record on the right.
 | Security | List and add security; over-collateralisation needs an approval reference |
 | Cessions | List and record cessions with policy/claim references and ceded premium/loss |
 | Technical accounts | Period statements newest period first, with ceded premium/loss/commission totals, an issued-only outstanding balance, a create form with a computed balance preview, and confirmed Issue/Settle actions |
-| Bordereaux | List and register bordereaux with period, source format, and line counts |
+| Bordereaux | Cedent period submissions newest period first with received/processed counts, premium/loss/line totals, a create form, and confirmed Process/Fail actions; processed rows link to the technical account they created |
 | Commutation | Propose, approve, and execute a commutation |
 | Activity | Event-derived, append-only timeline for the selected contract |
 
@@ -95,6 +95,30 @@ the contract remains the source of its terms, and FS-RI/SAP own the posted
 amounts — and contains load, create, and conflict failures locally so the
 contract record stays usable.
 
+The **Bordereaux** tab reads `GET /api/v1/contracts/{contractId}/bordereaux`
+with the tenant header and sorts the submissions newest period first by period
+end (then period start and bordereau number). Each row shows the bordereau
+number, period, received date, line count, premium, loss, commission, status,
+the linked technical account, and the actions. A RECEIVED submission can be
+**processed** or **failed**; both outcomes are terminal and show no action. The
+create form posts `periodStart`, `periodEnd`, `receivedDate` (the chosen
+calendar date), `currency`, `premiumAmount`, `lossAmount`, `commissionAmount`,
+`otherChargesAmount`, `lineCount`, and `notes` to the collection path as 4-dp
+decimal strings for the amounts; an inverted period, a missing received date, a
+bad currency, or a negative amount is rejected locally before anything is sent.
+**Process** asks for confirmation and PATCHes `/bordereaux/{bordereauId}/status`
+with `{ "status": "PROCESSED" }`; the refreshed row resolves the linked
+`technicalAccountId` to its account number, and the success message links to the
+Technical accounts tab. **Fail** opens a compact form with an optional note (400
+characters) and PATCHes the same path with `{ "status": "FAILED", "notes": "…" }`,
+omitting the notes key when blank. Five summary cards total the received count,
+the processed count, premium, loss, and submitted lines. The tab carries a submission context note —
+a bordereau is the cedent's period submission, processing creates the technical
+account, and the contract remains the source of its terms — and contains load,
+create, and conflict failures locally so the contract record stays usable; a
+409 on a status command reloads the row so it reflects whatever state won the
+race.
+
 ## Tests
 
 `tests/contract.spec.js` (operational layout and create via the primary action),
@@ -115,8 +139,14 @@ summary totals (issued-only outstanding balance), the create form's local period
 validation and exact POST payload with the computed balance preview, the
 confirmed issue/settle PATCH payloads (including a dismissed confirmation), the
 empty state and context note, a contained load failure, and a 409 duplicate-period
-response that preserves the form. Run with `npm test`; the Playwright config
-starts the dev server on port 3003.
+response that preserves the form. `tests/bordereaux.spec.js` covers the
+newest-period-first listing with the linked technical account and summary
+counts/totals, the create form's local period validation and exact POST payload
+(received date, amounts, lines, notes), the confirmed process PATCH and its
+linked-account message/tab navigation, fail with and without a note, the empty
+state and context note, a contained load failure, a 409 duplicate submission
+that preserves the form, and a 409 process race that reloads the terminal row.
+Run with `npm test`; the Playwright config starts the dev server on port 3003.
 
 ## Remaining gaps
 
