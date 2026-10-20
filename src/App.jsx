@@ -4,6 +4,7 @@ import './ui-overrides.css';
 import { apiFetch, errorMessage, APPROVER, TENANT } from './api';
 import EntityPicker from './EntityPicker';
 import { navigate } from './navigation';
+import { partyEndpoint, partyRecordLabel } from './party';
 import ResourceSection from './ResourceSection';
 import ParticipantsPanel from './ParticipantsPanel';
 import CessionsPanel from './CessionsPanel';
@@ -127,6 +128,12 @@ function shortId(value) {
   return value ? String(value).slice(0, 8) : '—';
 }
 
+/** Uses the resolved Party API label, falling back to the short UUID. */
+function resolvedPartyLabel(labels, partyId) {
+  if (!partyId) return '—';
+  return labels[partyId] || shortId(partyId);
+}
+
 function money(value, currency) {
   if (value === null || value === undefined || value === '') {
     return '—';
@@ -213,6 +220,7 @@ export default function App() {
   const [contracts, setContracts] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [partyLabels, setPartyLabels] = useState({ cedent: '', reinsurer: '' });
+  const [partyLookup, setPartyLookup] = useState({});
   const [filter, setFilter] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -231,6 +239,8 @@ export default function App() {
   const [routeVersion, setRouteVersion] = useState(0);
 
   const selected = contracts.find((contract) => contract.id === selectedId) || null;
+  const cedentPartyId = selected?.cedentPartyId || '';
+  const reinsurerPartyId = selected?.reinsurerPartyId || '';
   const needle = filter.trim().toLowerCase();
   const visibleContracts = needle
     ? contracts.filter((contract) => contractMatchesFilter(contract, needle))
@@ -245,6 +255,35 @@ export default function App() {
   useEffect(() => {
     load().catch((e) => setError(e.message));
   }, []);
+
+  /**
+   * Resolves the selected contract's cedent and reinsurer through the Party API
+   * after the record is already on screen. Party lookup is an enhancement: while
+   * it is in flight, or if it fails, the cross-links fall back to the short UUID
+   * and the contract keeps rendering.
+   */
+  useEffect(() => {
+    const partyIds = Array.from(new Set(
+      [cedentPartyId, reinsurerPartyId].filter(Boolean)
+    ));
+    if (partyIds.length === 0) return undefined;
+    let alive = true;
+    partyIds.forEach((partyId) => {
+      apiFetch(partyEndpoint(partyId), { headers: { 'X-EIA-Book': 'ASSUMED' } })
+        .then((party) => {
+          if (!alive) return;
+          const label = partyRecordLabel(party);
+          if (!label) return;
+          setPartyLookup((current) => (
+            current[partyId] === label ? current : { ...current, [partyId]: label }
+          ));
+        })
+        .catch(() => {
+          // Party resolution is an enhancement; the short id remains on screen.
+        });
+    });
+    return () => { alive = false; };
+  }, [cedentPartyId, reinsurerPartyId, refreshToken]);
 
   useEffect(() => {
     const onPop = () => setRouteVersion((value) => value + 1);
@@ -461,6 +500,8 @@ export default function App() {
   const nextStatuses = selected ? (NEXT_STATUS[selected.status] || []) : [];
   const canBind = Boolean(eligibility && eligibility.bindable && selected && selected.status === 'PLACED');
   const bound = Boolean(selected && BOUND_STATUSES.has(selected.status));
+  const cedentLabel = resolvedPartyLabel(partyLookup, cedentPartyId);
+  const reinsurerLabel = resolvedPartyLabel(partyLookup, reinsurerPartyId);
 
   const currency = (selected && selected.currency) || 'USD';
   const towerLimit = sumBy(summary.layers, (layer) => layer.limitAmount);
@@ -681,6 +722,20 @@ export default function App() {
                     {' · version '}
                     {selected.version ?? '—'}
                   </p>
+                  <p className="eia-record-subtitle">
+                    Cedent{' '}
+                    <PartyLink
+                      partyId={selected.cedentPartyId}
+                      label={cedentLabel}
+                      testId="cedent-party-link-header"
+                    />
+                    {' · '}Reinsurer{' '}
+                    <PartyLink
+                      partyId={selected.reinsurerPartyId}
+                      label={reinsurerLabel}
+                      testId="reinsurer-party-link-header"
+                    />
+                  </p>
                 </div>
                 <div className="eia-actions">
                   <span
@@ -770,7 +825,7 @@ export default function App() {
                         <dd>
                           <PartyLink
                             partyId={selected.cedentPartyId}
-                            label={selected.cedentDisplayName}
+                            label={cedentLabel}
                             testId="cedent-party-link"
                           />
                         </dd>
@@ -778,7 +833,7 @@ export default function App() {
                         <dd>
                           <PartyLink
                             partyId={selected.reinsurerPartyId}
-                            label={selected.reinsurerDisplayName}
+                            label={reinsurerLabel}
                             testId="reinsurer-party-link"
                           />
                         </dd>
@@ -887,6 +942,25 @@ export default function App() {
                       <p className="eia-muted">Loading related records…</p>
                     ) : (
                       <>
+                        <div className="eia-related-group" data-testid="related-parties">
+                          <h4 className="eia-related-title">Parties</h4>
+                          <p className="eia-related-party">
+                            <span className="eia-muted">Cedent</span>
+                            <PartyLink
+                              partyId={selected.cedentPartyId}
+                              label={cedentLabel}
+                              testId="cedent-party-link-related"
+                            />
+                          </p>
+                          <p className="eia-related-party">
+                            <span className="eia-muted">Reinsurer</span>
+                            <PartyLink
+                              partyId={selected.reinsurerPartyId}
+                              label={reinsurerLabel}
+                              testId="reinsurer-party-link-related"
+                            />
+                          </p>
+                        </div>
                         <div className="eia-related-group" data-testid="related-assumed-claims">
                           <h4 className="eia-related-title">Assumed claims</h4>
                           {related.assumedClaims.length === 0 ? (

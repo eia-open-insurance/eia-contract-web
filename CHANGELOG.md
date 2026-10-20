@@ -21,9 +21,15 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
   cross-links.
 - Overview cross-links, a "Why this matters" context panel, and related assumed
   claims and retrocessions from their search endpoints.
+- Cross-link transparency: the selected contract resolves its cedent and
+  reinsurer through `GET /api/v1/parties/{id}` with tenant and ASSUMED book
+  headers, and the header, Overview, and related-records panel render
+  `displayName · partyNumber` links to `/party?record={id}`. The short UUID stays
+  visible while a lookup loads or fails, so the contract record is never blocked.
 - Playwright coverage for the layer/participant/bind flow and the cession flow,
   including the over-100% and over-capacity rejections, plus record discovery,
-  queue filtering, both party pickers, and the cross-links.
+  queue filtering, both party pickers, party-label resolution and fallback, and
+  the cross-links.
 
 ### Changed
 

@@ -59,6 +59,25 @@
   margin-top: 12px;
 }
 
+/* Party cross-links in the related-records panel. */
+.eia-related-party {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 3px 0;
+  font-size: 12px;
+}
+
+.eia-related-party a {
+  color: var(--eia-blue);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.eia-related-party a:hover {
+  text-decoration: underline;
+}
+
 .eia-related-title {
   margin: 0 0 4px;
   font-size: 10px;

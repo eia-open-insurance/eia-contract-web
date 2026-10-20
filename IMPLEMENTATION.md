@@ -46,7 +46,11 @@ retrocessions attach to the contract while actual cessions remain FS-RI-owned,
 and fetches related records from
 `/api/v1/assumed-claims/search?q={contractId}&limit=5` and
 `/api/v1/retrocessions/search?q={contractId}&limit=5` with the ASSUMED book
-header.
+header. The selected contract's cedent and reinsurer are resolved through
+`GET /api/v1/parties/{id}` (tenant plus ASSUMED book headers); the header,
+Overview, and related-records panel show `displayName · partyNumber` links to
+`/party?record={id}`, falling back to the short UUID while a lookup loads or
+fails, without blocking the contract record.
 
 ## Tests
 
@@ -56,7 +60,8 @@ participants, watch the balance and bind enablement, bind; then an over-100%
 rejection), `tests/cession.spec.js` (record a cession, then a capacity
 rejection), and `tests/discovery.spec.js` (deep-link and popstate record
 selection, `?new=1`, queue filtering, both predictive party pickers and their
-POST payload, and the Overview cross-links/related records). Run with
+POST payload, party-label resolution and fallback, and the Overview
+cross-links/related records). Run with
 `npm test`; the Playwright config starts the dev server on port 3003.
 
 ## Remaining gaps

@@ -55,6 +55,29 @@ const PARTIES = {
   }
 };
 
+const PARTY_DETAILS = {
+  [CEDENT_ID]: {
+    id: CEDENT_ID,
+    tenantId: TENANT,
+    partyNumber: 'PTY-000001001',
+    partyType: 'ORGANIZATION',
+    displayName: 'Meridian Specialty',
+    legalName: 'Meridian Specialty Insurance Company',
+    status: 'ACTIVE',
+    version: 1
+  },
+  [REINSURER_ID]: {
+    id: REINSURER_ID,
+    tenantId: TENANT,
+    partyNumber: 'PTY-000002002',
+    partyType: 'ORGANIZATION',
+    displayName: 'Atlas Re',
+    legalName: 'Atlas Reinsurance Company',
+    status: 'ACTIVE',
+    version: 1
+  }
+};
+
 const ASSUMED_CLAIMS = [
   {
     id: 'ac-1',
@@ -81,7 +104,9 @@ function jsonResponse(route, body, status = 200) {
   return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function mockWorkspace(page) {
+async function mockWorkspace(page, options = {}) {
+  const state = { partyRequests: [] };
+
   await page.route('**/api/v1/contracts**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -115,6 +140,22 @@ async function mockWorkspace(page) {
     return jsonResponse(route, { query: term, limit: 8, items });
   });
 
+  await page.route(/\/api\/v1\/parties\/[0-9a-fA-F-]{36}$/, async (route) => {
+    const request = route.request();
+    const partyId = new URL(request.url()).pathname.split('/').pop();
+    state.partyRequests.push({ partyId, headers: request.headers() });
+    if (options.partyLookup === 'fail') {
+      return jsonResponse(route, {
+        code: 'UNAVAILABLE',
+        message: 'Party service is unavailable'
+      }, 503);
+    }
+    const party = PARTY_DETAILS[partyId];
+    return party
+      ? jsonResponse(route, party)
+      : jsonResponse(route, { code: 'NOT_FOUND', message: `No party ${partyId}` }, 404);
+  });
+
   await page.route('**/api/v1/assumed-claims/search**', async (route) =>
     jsonResponse(route, { query: CONTRACT_A.id, limit: 5, items: ASSUMED_CLAIMS })
   );
@@ -122,6 +163,8 @@ async function mockWorkspace(page) {
   await page.route('**/api/v1/retrocessions/search**', async (route) =>
     jsonResponse(route, { query: CONTRACT_A.id, limit: 5, items: RETROCESSIONS })
   );
+
+  return state;
 }
 
 test('opens a contract directly from the record URL and follows popstate', async ({ page }) => {
@@ -229,7 +272,7 @@ test('picks the cedent and reinsurer predictively and posts both party ids', asy
 });
 
 test('shows party cross-links, the contract context panel, and both related-record groups', async ({ page }) => {
-  await mockWorkspace(page);
+  const state = await mockWorkspace(page);
   const relatedRequests = [];
   page.on('request', (request) => {
     const url = request.url();
@@ -242,9 +285,9 @@ test('shows party cross-links, the contract context panel, and both related-reco
   await expect(page.locator('.eia-record-panel').getByRole('heading', { name: CONTRACT_A.contractNumber })).toBeVisible();
 
   await expect(page.getByTestId('cedent-party-link')).toHaveAttribute('href', `/party?record=${CEDENT_ID}`);
-  await expect(page.getByTestId('cedent-party-link')).toHaveText('Meridian Specialty');
+  await expect(page.getByTestId('cedent-party-link')).toHaveText('Meridian Specialty · PTY-000001001');
   await expect(page.getByTestId('reinsurer-party-link')).toHaveAttribute('href', `/party?record=${REINSURER_ID}`);
-  await expect(page.getByTestId('reinsurer-party-link')).toHaveText('Atlas Re');
+  await expect(page.getByTestId('reinsurer-party-link')).toHaveText('Atlas Re · PTY-000002002');
 
   const context = page.getByTestId('why-this-matters');
   await expect(context).toContainText('Why this matters');
@@ -272,4 +315,65 @@ test('shows party cross-links, the contract context panel, and both related-reco
   expect(retroRequest.url).toContain(`/api/v1/retrocessions/search?q=${CONTRACT_A.id}&limit=5`);
   expect(assumedRequest.book).toBe('ASSUMED');
   expect(retroRequest.book).toBe('ASSUMED');
+
+  await expect.poll(() => state.partyRequests.length).toBe(2);
+  expect(state.partyRequests.map((request) => request.partyId).sort())
+    .toEqual([CEDENT_ID, REINSURER_ID].sort());
+  expect(state.partyRequests.every((request) => request.headers['x-eia-book'] === 'ASSUMED')).toBe(true);
+  expect(state.partyRequests.every((request) => request.headers['x-eia-tenant'] === TENANT)).toBe(true);
+});
+
+test('resolves cedent and reinsurer labels through the Party API in every cross-link', async ({ page }) => {
+  const state = await mockWorkspace(page);
+
+  await page.goto(`/?record=${CONTRACT_A.id}`);
+  await expect(page.locator('.eia-record-panel').getByRole('heading', { name: CONTRACT_A.contractNumber })).toBeVisible();
+
+  const expectations = [
+    ['cedent-party-link-header', CEDENT_ID, 'Meridian Specialty · PTY-000001001'],
+    ['cedent-party-link', CEDENT_ID, 'Meridian Specialty · PTY-000001001'],
+    ['cedent-party-link-related', CEDENT_ID, 'Meridian Specialty · PTY-000001001'],
+    ['reinsurer-party-link-header', REINSURER_ID, 'Atlas Re · PTY-000002002'],
+    ['reinsurer-party-link', REINSURER_ID, 'Atlas Re · PTY-000002002'],
+    ['reinsurer-party-link-related', REINSURER_ID, 'Atlas Re · PTY-000002002']
+  ];
+
+  for (const [testId, partyId, label] of expectations) {
+    const link = page.getByTestId(testId);
+    await expect(link).toHaveText(label);
+    await expect(link).toHaveAttribute('href', `/party?record=${partyId}`);
+  }
+
+  await expect.poll(() => state.partyRequests.length).toBe(2);
+  for (const request of state.partyRequests) {
+    expect(request.headers['x-eia-book']).toBe('ASSUMED');
+    expect(request.headers['x-eia-tenant']).toBe(TENANT);
+  }
+});
+
+test('renders the contract while party lookup fails and falls back to short party ids', async ({ page }) => {
+  const state = await mockWorkspace(page, { partyLookup: 'fail' });
+
+  await page.goto(`/?record=${CONTRACT_A.id}`);
+  await expect(page.locator('.eia-record-panel').getByRole('heading', { name: CONTRACT_A.contractNumber })).toBeVisible();
+  await expect(page.getByTestId('contract-status')).toHaveText('PLACED');
+
+  const shortCedentId = CEDENT_ID.slice(0, 8);
+  const shortReinsurerId = REINSURER_ID.slice(0, 8);
+  const expectations = [
+    ['cedent-party-link-header', shortCedentId],
+    ['cedent-party-link', shortCedentId],
+    ['cedent-party-link-related', shortCedentId],
+    ['reinsurer-party-link-header', shortReinsurerId],
+    ['reinsurer-party-link', shortReinsurerId],
+    ['reinsurer-party-link-related', shortReinsurerId]
+  ];
+
+  for (const [testId, label] of expectations) {
+    await expect(page.getByTestId(testId)).toHaveText(label);
+  }
+
+  await expect.poll(() => state.partyRequests.length).toBe(2);
+  expect(state.partyRequests.every((request) => request.headers['x-eia-book'] === 'ASSUMED')).toBe(true);
+  expect(state.partyRequests.every((request) => request.headers['x-eia-tenant'] === TENANT)).toBe(true);
 });
