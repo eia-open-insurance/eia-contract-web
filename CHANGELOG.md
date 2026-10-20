@@ -40,6 +40,17 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
 - Playwright coverage for the linked-document query and tenant header, document
   links, the empty state, a contained document error, refetching on selection,
   and rendering the contract while the Document API is still in flight.
+- Event-derived **Activity** tab: selecting a contract fetches
+  `GET /api/v1/events/aggregate/{contractId}?limit=50` with the tenant header and
+  renders a newest-first timeline of timestamp, readable event type, event
+  status, version, and the payload facts a contract user needs — status
+  transition, bind approval, cession number and amounts, and commutation type,
+  basis, agreed amount, and effective date. The card carries its own loading,
+  error, empty, and refresh states plus an event-derived/append-only/source-of-
+  truth note, so a slow or unavailable event service never blocks the record.
+- Playwright coverage for the aggregate path and tenant header, newest-first
+  ordering and rendering, the empty state, a contained 503, the contract payload
+  facts, refetching on selection, and the card refresh.
 
 ### Changed
 

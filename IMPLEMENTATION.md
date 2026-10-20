@@ -24,6 +24,7 @@ selected record on the right.
 | Cessions | List and record cessions with policy/claim references and ceded premium/loss |
 | Bordereaux | List and register bordereaux with period, source format, and line counts |
 | Commutation | Propose, approve, and execute a commutation |
+| Activity | Event-derived, append-only timeline for the selected contract |
 
 The selected-contract header shows the contract number, status, bound state, and
 the **Bind contract** action. Bind readiness comes from
@@ -62,6 +63,17 @@ Loading and failure are card-local: a slow or unavailable Document API never
 blocks or fails the contract render, and the existing related-record cards keep
 their state.
 
+The **Activity** tab shows the event-derived timeline for the selected contract.
+Selecting a record fetches `GET /api/v1/events/aggregate/{contractId}?limit=50`
+with the tenant header, accepts either a bare array or an `{ items }` page, and
+renders newest first: timestamp, readable event type, event delivery status, the
+aggregate version, and the payload facts a contract user needs — the status
+transition, bind approval, recorded cession with ceded premium/loss, and
+commutation type, basis, agreed amount, and effective date. The card owns its
+loading, error, empty, and refresh states and carries an
+event-derived/append-only note: the contract record stays the source of truth,
+so a slow or unavailable event service never blocks the record.
+
 ## Tests
 
 `tests/contract.spec.js` (operational layout and create via the primary action),
@@ -74,8 +86,10 @@ POST payload, party-label resolution and fallback, and the Overview
 cross-links/related records). `tests/documents.spec.js` covers the linked-document
 query and tenant header, document links, refetching on selection, the empty
 state, a contained error, and rendering the contract while the Document API is
-still in flight. Run with `npm test`; the Playwright config starts the dev server
-on port 3003.
+still in flight. `tests/activity.spec.js` covers the aggregate path and tenant
+header, newest-first ordering and rendering, the empty state, a contained 503,
+the contract payload facts, refetching on selection, and the card refresh. Run
+with `npm test`; the Playwright config starts the dev server on port 3003.
 
 ## Remaining gaps
 

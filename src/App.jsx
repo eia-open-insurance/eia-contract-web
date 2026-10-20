@@ -8,6 +8,8 @@ import { partyEndpoint, partyRecordLabel } from './party';
 import ResourceSection from './ResourceSection';
 import ParticipantsPanel from './ParticipantsPanel';
 import CessionsPanel from './CessionsPanel';
+import ActivityPanel from './ActivityPanel';
+import { activityEndpoint, activityItems } from './activity';
 import {
   CONTRACT_LINKED_TYPE,
   documentHref,
@@ -109,7 +111,8 @@ const TABS = [
   'Security',
   'Cessions',
   'Bordereaux',
-  'Commutation'
+  'Commutation',
+  'Activity'
 ];
 
 const EMPTY_FORM = {
@@ -250,6 +253,8 @@ export default function App() {
   const [documents, setDocuments] = useState([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentsError, setDocumentsError] = useState('');
+  const [activity, setActivity] = useState({ items: [], loading: false, error: '' });
+  const [activityNonce, setActivityNonce] = useState(0);
   const [routeVersion, setRouteVersion] = useState(0);
 
   const selected = contracts.find((contract) => contract.id === selectedId) || null;
@@ -437,8 +442,41 @@ export default function App() {
     };
   }, [selectedId, refreshToken]);
 
+  /**
+   * Event-derived activity for the selected contract. The fetch starts when the
+   * record is selected and owns its own loading/error state, so a slow or
+   * unavailable event service never blocks the contract render.
+   *
+   * Event data is supplied by the platform event-ingest service (`GET
+   * /api/v1/events/aggregate/{contractId}?limit=50`, tenant in `X-EIA-Tenant`).
+   */
+  useEffect(() => {
+    if (!selectedId) {
+      setActivity({ items: [], loading: false, error: '' });
+      return undefined;
+    }
+    let cancelled = false;
+    setActivity({ items: [], loading: true, error: '' });
+    apiFetch(activityEndpoint(selectedId))
+      .then((payload) => {
+        if (cancelled) return;
+        setActivity({ items: activityItems(payload), loading: false, error: '' });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setActivity({ items: [], loading: false, error: errorMessage(error) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, refreshToken, activityNonce]);
+
   function refresh() {
     setRefreshToken((value) => value + 1);
+  }
+
+  function refreshActivity() {
+    setActivityNonce((value) => value + 1);
   }
 
   async function reloadWorkspace() {
@@ -1345,6 +1383,15 @@ export default function App() {
                       )}
                     </span>
                   )}
+                />
+              )}
+
+              {tab === 'Activity' && (
+                <ActivityPanel
+                  items={activity.items}
+                  loading={activity.loading}
+                  error={activity.error}
+                  onRefresh={refreshActivity}
                 />
               )}
             </>
