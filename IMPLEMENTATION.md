@@ -99,11 +99,17 @@ contract record stays usable.
 Each technical-account row expands through a chevron button. The expanded panel
 reads `GET /api/v1/contracts/{contractId}/technical-accounts/{accountId}/lines`
 with the tenant header and shows the statement lines (type, reference,
-description, amount, and delete), a totals-by-type table, and a reconciliation
-table comparing each header component with the same bucket of line types
-(PREMIUM, LOSS, COMMISSION, OTHER) and the derived balance. The reconciled
+description, amount, and delete), a totals-by-type table, a totals-by-bucket
+table, and a reconciliation table comparing each header component with its
+bucket of line types and the derived balance. The add form offers the full
+SPEC 11.3.4 line-type domain — PREMIUM, COMMISSION, BROKERAGE, PAID_LOSS,
+OUTSTANDING_LOSS, IBNR, ALAE, REINSTATEMENT, CASH_CALL, FUNDS_WITHHELD, TAX,
+ADJUSTMENT, and OTHER — and every type rolls into one of four buckets:
+PREMIUM → premium; PAID_LOSS, OUTSTANDING_LOSS, IBNR, ALAE, REINSTATEMENT, and
+CASH_CALL → loss; COMMISSION and BROKERAGE → commission; FUNDS_WITHHELD, TAX,
+ADJUSTMENT, and OTHER → other. The rows keep their human labels. The reconciled
 indicator follows CTR-08: every component and the balance must match within
-0.01. A DRAFT statement shows an add form for line type, reference, description,
+0.01. A DRAFT statement shows the add form for line type, reference, description,
 and amount and posts
 `{ lineType, reference?, description?, amount }` with the amount as a 4-dp
 decimal string; a line is deleted with `DELETE …/lines/{lineId}` after

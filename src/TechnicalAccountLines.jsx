@@ -45,21 +45,6 @@ function reconciliationNote(status, tolerance) {
   return 'No lines are recorded. A header-only statement has no line detail to reconcile and remains issuable; add lines to itemise it.';
 }
 
-function componentLabel(component) {
-  switch (component) {
-    case 'premium':
-      return 'Ceded premium';
-    case 'losses':
-      return 'Ceded losses';
-    case 'commission':
-      return 'Commission';
-    case 'otherCharges':
-      return 'Other charges';
-    default:
-      return component;
-  }
-}
-
 function lineDisplayName(row) {
   const reference = lineReference(row);
   if (reference) return reference;
@@ -132,6 +117,7 @@ export default function TechnicalAccountLines({
     [account, lines]
   );
   const byType = reconciliation.byType;
+  const byBucket = reconciliation.byBucket;
   const serviceConflictRows = useMemo(() => reconcileErrorRows(reconcileError), [reconcileError]);
   // The public domain API may forward only the conflict code and message and drop
   // the expert's per-type field violations. In that case the locally computed
@@ -238,8 +224,10 @@ export default function TechnicalAccountLines({
         </span>
       </div>
       <p className="eia-muted" style={{ marginTop: 0 }}>
-        Lines itemise the period statement by type. The header must reconcile to these
-        lines before a DRAFT can be issued; an ISSUED or SETTLED statement is immutable.
+        Lines itemise the period statement by type. Each type rolls into one of four
+        buckets — premium, loss, commission, or other — and the header must reconcile to
+        those buckets before a DRAFT can be issued; an ISSUED or SETTLED statement is
+        immutable.
       </p>
 
       {reconcileError && (
@@ -356,7 +344,7 @@ export default function TechnicalAccountLines({
                   <tr>
                     <th>Line type</th>
                     <th>Lines</th>
-                    <th>Header component</th>
+                    <th>Bucket</th>
                     <th>Total</th>
                   </tr>
                 </thead>
@@ -365,8 +353,45 @@ export default function TechnicalAccountLines({
                     <tr key={row.type} data-testid={`technical-account-line-total-${row.type}`}>
                       <td>{row.label}</td>
                       <td>{row.count}</td>
-                      <td>{componentLabel(row.component)}</td>
+                      <td>{row.bucketLabel}</td>
                       <td>{formatAmount(row.amount, rowCurrency)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="eia-section-title">
+            <h4 className="eia-subheading">Totals by bucket</h4>
+            <span className="eia-muted" data-testid="technical-account-line-bucket-count">
+              {byBucket.length} buckets
+            </span>
+          </div>
+          {lines.length === 0 ? (
+            <p className="eia-muted" data-testid="technical-account-line-buckets-empty">
+              No bucket totals to group yet.
+            </p>
+          ) : (
+            <div className="eia-table-wrap" style={{ marginBottom: 14 }}>
+              <table className="eia-table" aria-label="Line totals by bucket">
+                <thead>
+                  <tr>
+                    <th>Bucket</th>
+                    <th>Lines</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byBucket.map((row) => (
+                    <tr key={row.bucket} data-testid={`technical-account-line-bucket-${row.bucket}`}>
+                      <td>{row.label}</td>
+                      <td data-testid={`technical-account-line-bucket-${row.bucket}-count`}>
+                        {row.count}
+                      </td>
+                      <td data-testid={`technical-account-line-bucket-${row.bucket}-amount`}>
+                        {formatAmount(row.amount, rowCurrency)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

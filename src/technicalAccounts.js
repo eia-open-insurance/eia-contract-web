@@ -246,31 +246,45 @@ export function statusPayload(status) {
  *
  * A technical account is the header of the period statement: ceded premium,
  * ceded losses, commission, other charges, and the derived balance. Its lines
- * itemise those amounts by type. The service reduces the line domain to the
- * four header components, so each line type rolls into exactly one of them:
+ * itemise those amounts by type. Every line type rolls into exactly one of four
+ * financial buckets, and each bucket feeds one header component:
  *
- *   PREMIUM     -> ceded premium
- *   LOSS        -> ceded losses
- *   COMMISSION  -> commission
- *   OTHER       -> other charges
+ *   PREMIUM                              -> premium     -> ceded premium
+ *   PAID_LOSS, OUTSTANDING_LOSS, IBNR,
+ *   ALAE, REINSTATEMENT, CASH_CALL       -> loss        -> ceded losses
+ *   COMMISSION, BROKERAGE                -> commission  -> commission
+ *   FUNDS_WITHHELD, TAX, ADJUSTMENT,
+ *   OTHER                                -> other       -> other charges
  *
  * Line amounts are strictly positive magnitudes, matching the domain's money
  * validation. The balance comparison applies the same sign convention as the
  * header: premium + other charges - losses - commission.
  * ------------------------------------------------------------------------- */
 
+/**
+ * Every line type the add form offers, in display order. These are the detail
+ * types of the SPEC 11.3.4 technical-account line domain, not the four header
+ * components the reconciliation groups them into.
+ */
 export const TECHNICAL_ACCOUNT_LINE_TYPES = [
   'PREMIUM',
-  'LOSS',
   'COMMISSION',
+  'BROKERAGE',
+  'PAID_LOSS',
+  'OUTSTANDING_LOSS',
+  'IBNR',
+  'ALAE',
+  'REINSTATEMENT',
+  'CASH_CALL',
+  'FUNDS_WITHHELD',
+  'TAX',
+  'ADJUSTMENT',
   'OTHER'
 ];
 
 export const TECHNICAL_ACCOUNT_LINE_TYPE_LABELS = {
   PREMIUM: 'Premium',
-  LOSS: 'Loss',
   COMMISSION: 'Commission',
-  OTHER: 'Other charges',
   BROKERAGE: 'Brokerage',
   PAID_LOSS: 'Paid loss',
   OUTSTANDING_LOSS: 'Outstanding loss',
@@ -280,27 +294,58 @@ export const TECHNICAL_ACCOUNT_LINE_TYPE_LABELS = {
   CASH_CALL: 'Cash call',
   FUNDS_WITHHELD: 'Funds withheld',
   TAX: 'Tax',
-  ADJUSTMENT: 'Adjustment'
+  ADJUSTMENT: 'Adjustment',
+  OTHER: 'Other'
 };
 
-export const TECHNICAL_ACCOUNT_LINE_COMPONENT = {
+/** The four buckets the totals tables and reconciliation group lines into. */
+export const TECHNICAL_ACCOUNT_LINE_BUCKETS = ['premium', 'loss', 'commission', 'other'];
+
+/** Line type -> financial bucket. Unknown types fall to `other`. */
+export const TECHNICAL_ACCOUNT_LINE_BUCKET = {
   PREMIUM: 'premium',
-  LOSS: 'losses',
+  PAID_LOSS: 'loss',
+  OUTSTANDING_LOSS: 'loss',
+  IBNR: 'loss',
+  ALAE: 'loss',
+  REINSTATEMENT: 'loss',
+  CASH_CALL: 'loss',
   COMMISSION: 'commission',
-  OTHER: 'otherCharges',
-  // SPEC detail types remain readable when an older or richer projection emits
-  // them; every one still rolls into exactly one header component.
-  BROKERAGE: 'otherCharges',
-  PAID_LOSS: 'losses',
-  OUTSTANDING_LOSS: 'losses',
-  IBNR: 'losses',
-  ALAE: 'losses',
-  REINSTATEMENT: 'otherCharges',
-  CASH_CALL: 'otherCharges',
-  FUNDS_WITHHELD: 'otherCharges',
-  TAX: 'otherCharges',
-  ADJUSTMENT: 'otherCharges'
+  BROKERAGE: 'commission',
+  FUNDS_WITHHELD: 'other',
+  TAX: 'other',
+  ADJUSTMENT: 'other',
+  OTHER: 'other'
 };
+
+/** Alias naming both sides of the mapping; the table above is authoritative. */
+export const TECHNICAL_ACCOUNT_LINE_TYPE_BUCKET = TECHNICAL_ACCOUNT_LINE_BUCKET;
+
+export const TECHNICAL_ACCOUNT_LINE_BUCKET_LABELS = {
+  premium: 'Premium',
+  loss: 'Loss',
+  commission: 'Commission',
+  other: 'Other'
+};
+
+/** Bucket -> the technical-account header field it reconciles against. */
+export const TECHNICAL_ACCOUNT_BUCKET_COMPONENT = {
+  premium: 'premium',
+  loss: 'losses',
+  commission: 'commission',
+  other: 'otherCharges'
+};
+
+/**
+ * Backwards-compatible line type -> header component map. The reconciliation
+ * works in header fields, while users see the four financial buckets.
+ */
+export const TECHNICAL_ACCOUNT_LINE_COMPONENT = Object.fromEntries(
+  Object.entries(TECHNICAL_ACCOUNT_LINE_BUCKET).map(([type, bucket]) => [
+    type,
+    TECHNICAL_ACCOUNT_BUCKET_COMPONENT[bucket]
+  ])
+);
 
 export const LINE_COMPONENT_LABELS = {
   premium: 'Ceded premium',
@@ -359,9 +404,25 @@ export function lineTypeLabel(type) {
     || key.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
+/** The financial bucket a line type rolls into; unknown types fall to other. */
+export function lineBucket(type) {
+  const key = String(type || '').toUpperCase();
+  // LOSS was the original reduced-slice line type. The add form no longer
+  // offers it, but persisted statements can still contain it.
+  if (key === 'LOSS') {
+    return 'loss';
+  }
+  return TECHNICAL_ACCOUNT_LINE_BUCKET[key] || 'other';
+}
+
+/** Human label for a bucket; unknown buckets render as Other. */
+export function lineBucketLabel(bucket) {
+  return TECHNICAL_ACCOUNT_LINE_BUCKET_LABELS[String(bucket || '').toLowerCase()] || 'Other';
+}
+
 /** The header component a line type rolls into; unknown types fall to charges. */
 export function lineComponent(type) {
-  return TECHNICAL_ACCOUNT_LINE_COMPONENT[String(type || '').toUpperCase()] || 'otherCharges';
+  return TECHNICAL_ACCOUNT_BUCKET_COMPONENT[lineBucket(type)] || 'otherCharges';
 }
 
 /** Accepts a bare array or an `{ items }` / `{ lines }` page from the service. */
@@ -380,7 +441,7 @@ export function lineRows(payload) {
 
 /**
  * One row per line type present, in the canonical type order, with the amount,
- * transaction count, and header component the type rolls into.
+ * transaction count, bucket, and header component the type rolls into.
  */
 export function summarizeLineTypes(lines) {
   const list = Array.isArray(lines) ? lines : [];
@@ -388,9 +449,12 @@ export function summarizeLineTypes(lines) {
   for (const line of list) {
     const type = lineType(line) || 'UNKNOWN';
     const units = amountUnits(lineAmount(line));
+    const bucket = lineBucket(type);
     const current = grouped.get(type) || {
       type,
       label: lineTypeLabel(type),
+      bucket,
+      bucketLabel: lineBucketLabel(bucket),
       component: lineComponent(type),
       units: 0,
       count: 0
@@ -409,6 +473,8 @@ export function summarizeLineTypes(lines) {
     .map((row) => ({
       type: row.type,
       label: row.label,
+      bucket: row.bucket,
+      bucketLabel: row.bucketLabel,
       component: row.component,
       count: row.count,
       amount: unitsToAmount(row.units),
@@ -416,13 +482,61 @@ export function summarizeLineTypes(lines) {
     }));
 }
 
-export function lineTotals(lines) {
+/**
+ * One row for each of the four buckets, in the canonical premium, loss,
+ * commission, other order. Empty buckets are included so the totals table does
+ * not move as lines are added or removed.
+ */
+export function summarizeLineBuckets(lines) {
   const list = Array.isArray(lines) ? lines : [];
-  const totals = { premium: 0, losses: 0, commission: 0, otherCharges: 0 };
+  const grouped = new Map(
+    TECHNICAL_ACCOUNT_LINE_BUCKETS.map((bucket) => [bucket, {
+      bucket,
+      label: lineBucketLabel(bucket),
+      component: TECHNICAL_ACCOUNT_BUCKET_COMPONENT[bucket],
+      units: 0,
+      count: 0
+    }])
+  );
   for (const line of list) {
-    totals[lineComponent(lineType(line))] += amountUnits(lineAmount(line));
+    const row = grouped.get(lineBucket(lineType(line)));
+    row.units += amountUnits(lineAmount(line));
+    row.count += 1;
+  }
+  return TECHNICAL_ACCOUNT_LINE_BUCKETS.map((bucket) => {
+    const row = grouped.get(bucket);
+    return {
+      bucket: row.bucket,
+      label: row.label,
+      component: row.component,
+      count: row.count,
+      amount: unitsToAmount(row.units),
+      units: row.units
+    };
+  });
+}
+
+/**
+ * Totals keyed by the four financial buckets, in integer ten-thousandths. This
+ * is the bucket view; lineTotals keeps the header-component keys the
+ * reconciliation compares against the statement header.
+ */
+export function lineBucketTotals(lines) {
+  const totals = { premium: 0, loss: 0, commission: 0, other: 0 };
+  for (const line of Array.isArray(lines) ? lines : []) {
+    totals[lineBucket(lineType(line))] += amountUnits(lineAmount(line));
   }
   return totals;
+}
+
+export function lineTotals(lines) {
+  const buckets = lineBucketTotals(lines);
+  return {
+    premium: buckets.premium,
+    losses: buckets.loss,
+    commission: buckets.commission,
+    otherCharges: buckets.other
+  };
 }
 
 function signedLineBalance(totals) {
@@ -490,7 +604,8 @@ export function reconcileAccountLines(account, lines) {
       balance: unitsToAmount(lineBalance)
     },
     components: rendered,
-    byType: summarizeLineTypes(list)
+    byType: summarizeLineTypes(list),
+    byBucket: summarizeLineBuckets(list)
   };
 }
 

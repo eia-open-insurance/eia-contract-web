@@ -68,14 +68,20 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
   duplicate-period response that preserves the form.
 - Technical-account statement lines: each account row expands to list its lines
   from `GET /api/v1/contracts/{contractId}/technical-accounts/{accountId}/lines`
-  with type, reference, description, amount, and delete, plus totals grouped by
-  line type against the header components and a reconciled indicator using the
-  CTR-08 0.01 tolerance. A DRAFT statement can add a line with `POST …/lines`
-  and delete one with `DELETE …/lines/{lineId}`; ISSUED and SETTLED statements
-  are read-only. If issue returns `409 ACCOUNT_LINES_DO_NOT_RECONCILE`, the
-  expanded detail shows the service's explanation and expected/actual detail
-  while the statement stays DRAFT. Playwright coverage covers expand/list, add,
-  delete, the immutable issued state, and the reconciliation 409.
+  with type, reference, description, amount, and delete, plus totals by line type
+  and by the four financial buckets (premium, loss, commission, other), a
+  header-versus-lines reconciliation, and a reconciled indicator using the CTR-08
+  0.01 tolerance. The add form offers PREMIUM, COMMISSION, BROKERAGE, PAID_LOSS,
+  OUTSTANDING_LOSS, IBNR, ALAE, REINSTATEMENT, CASH_CALL, FUNDS_WITHHELD, TAX,
+  ADJUSTMENT, and OTHER with human labels; each type maps to one bucket for the
+  reconciliation (BROKERAGE to commission; REINSTATEMENT and CASH_CALL to loss;
+  FUNDS_WITHHELD, TAX, ADJUSTMENT, and OTHER to other). A DRAFT statement can add
+  a line with `POST …/lines` and delete one with `DELETE …/lines/{lineId}`;
+  ISSUED and SETTLED statements are read-only. If issue returns
+  `409 ACCOUNT_LINES_DO_NOT_RECONCILE`, the expanded detail shows the service's
+  explanation and expected/actual detail while the statement stays DRAFT.
+  Playwright coverage covers expand/list, every add-line option and its bucket,
+  add payloads, delete, the immutable issued state, and the reconciliation 409.
 - **Cash calls** tab, directly after Technical accounts: lists the selected
   contract's interim funding requests newest period first from
   `GET /api/v1/contracts/{id}/cash-calls`, with call number, period,

@@ -3,6 +3,24 @@ import { test, expect } from '@playwright/test';
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const CONTRACT_ID = '22222222-2222-7222-8222-222222222222';
 
+// The full add-line domain: every option the form must offer and the bucket the
+// totals and reconciliation tables must roll it into.
+const LINE_TYPE_OPTIONS = [
+  ['PREMIUM', 'Premium', 'Premium'],
+  ['COMMISSION', 'Commission', 'Commission'],
+  ['BROKERAGE', 'Brokerage', 'Commission'],
+  ['PAID_LOSS', 'Paid loss', 'Loss'],
+  ['OUTSTANDING_LOSS', 'Outstanding loss', 'Loss'],
+  ['IBNR', 'IBNR', 'Loss'],
+  ['ALAE', 'ALAE', 'Loss'],
+  ['REINSTATEMENT', 'Reinstatement', 'Loss'],
+  ['CASH_CALL', 'Cash call', 'Loss'],
+  ['FUNDS_WITHHELD', 'Funds withheld', 'Other'],
+  ['TAX', 'Tax', 'Other'],
+  ['ADJUSTMENT', 'Adjustment', 'Other'],
+  ['OTHER', 'Other', 'Other']
+];
+
 const contract = {
   id: CONTRACT_ID,
   tenantId: TENANT,
@@ -74,6 +92,15 @@ async function json(route, status, body) {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
+function usd(value) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(Number(value));
+}
+
 function balanceOf(body) {
   const total = Number(body.cededPremium || 0)
     - Number(body.cededLosses || 0)
@@ -84,7 +111,21 @@ function balanceOf(body) {
 
 function totalsOf(lines) {
   const totals = { premium: 0, loss: 0, commission: 0, other: 0 };
-  const buckets = { PREMIUM: 'premium', LOSS: 'loss', COMMISSION: 'commission' };
+  const buckets = {
+    PREMIUM: 'premium',
+    COMMISSION: 'commission',
+    BROKERAGE: 'commission',
+    PAID_LOSS: 'loss',
+    OUTSTANDING_LOSS: 'loss',
+    IBNR: 'loss',
+    ALAE: 'loss',
+    REINSTATEMENT: 'loss',
+    CASH_CALL: 'loss',
+    FUNDS_WITHHELD: 'other',
+    TAX: 'other',
+    ADJUSTMENT: 'other',
+    OTHER: 'other'
+  };
   for (const line of lines) {
     const key = buckets[String(line.lineType || '').toUpperCase()] || 'other';
     totals[key] += Number(line.amount || 0);
@@ -583,7 +624,7 @@ test('expands a statement to list its lines, totals by type, and a reconciled he
     }),
     accountLine({
       id: 'line-2',
-      lineType: 'LOSS',
+      lineType: 'PAID_LOSS',
       reference: 'LOSS-2026-001',
       description: 'Q1 paid loss',
       amount: '250000.0000',
@@ -618,12 +659,12 @@ test('expands a statement to list its lines, totals by type, and a reconciled he
   await expect(lineRows.nth(0).getByTestId('technical-account-line-reference')).toHaveText('BORD-2026-001');
   await expect(lineRows.nth(0).getByTestId('technical-account-line-description')).toHaveText('Q1 premium');
   await expect(lineRows.nth(0).getByTestId('technical-account-line-amount')).toHaveText('$1,000,000.00');
-  await expect(lineRows.nth(1).getByTestId('technical-account-line-type')).toHaveText('Loss');
+  await expect(lineRows.nth(1).getByTestId('technical-account-line-type')).toHaveText('Paid loss');
   await expect(lineRows.nth(2).getByTestId('technical-account-line-type')).toHaveText('Commission');
 
   await expect(panel.getByTestId('technical-account-line-count')).toHaveText('3 lines');
-  await expect(panel.getByTestId('technical-account-line-total-PREMIUM')).toContainText('Ceded premium');
-  await expect(panel.getByTestId('technical-account-line-total-LOSS')).toContainText('Ceded losses');
+  await expect(panel.getByTestId('technical-account-line-total-PREMIUM')).toContainText('Premium');
+  await expect(panel.getByTestId('technical-account-line-total-PAID_LOSS')).toContainText('Loss');
   await expect(panel.getByTestId('technical-account-line-total-COMMISSION')).toContainText('Commission');
 
   await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveText('Reconciled');
@@ -673,7 +714,7 @@ test('adds a line to a DRAFT statement and recomputes the reconciliation', async
   await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveClass(/red/);
   await expect(panel.getByTestId('technical-account-line-form')).toBeVisible();
 
-  await page.getByLabel('Line type').selectOption('LOSS');
+  await page.getByLabel('Line type').selectOption('PAID_LOSS');
   await page.getByLabel('Reference').fill('LOSS-2026-001');
   await page.getByLabel('Description').fill('Q1 paid loss');
   await page.getByLabel('Amount').fill('250000');
@@ -683,7 +724,7 @@ test('adds a line to a DRAFT statement and recomputes the reconciliation', async
   expect(state.linePosts[0]).toEqual({
     path: `/api/v1/contracts/${CONTRACT_ID}/technical-accounts/ta-30/lines`,
     body: {
-      lineType: 'LOSS',
+      lineType: 'PAID_LOSS',
       reference: 'LOSS-2026-001',
       description: 'Q1 paid loss',
       amount: '250000.0000'
@@ -696,10 +737,151 @@ test('adds a line to a DRAFT statement and recomputes the reconciliation', async
   await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveText('Reconciled');
   await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveClass(/green/);
   await expect(panel.getByTestId('technical-account-line-message')).toHaveText(
-    'Loss line recorded.'
+    'Paid loss line recorded.'
   );
   await expect(page.getByLabel('Amount')).toHaveValue('');
   await expect(page.getByLabel('Line type')).toHaveValue('PREMIUM');
+});
+
+test('offers every line type, labels it, and rolls it into its bucket', async ({ page }) => {
+  const amounts = {
+    PREMIUM: '100000.0000',
+    COMMISSION: '40000.0000',
+    BROKERAGE: '10000.0000',
+    PAID_LOSS: '60000.0000',
+    OUTSTANDING_LOSS: '30000.0000',
+    IBNR: '20000.0000',
+    ALAE: '10000.0000',
+    REINSTATEMENT: '5000.0000',
+    CASH_CALL: '5000.0000',
+    FUNDS_WITHHELD: '20000.0000',
+    TAX: '15000.0000',
+    ADJUSTMENT: '10000.0000',
+    OTHER: '5000.0000'
+  };
+  const draft = account({
+    accountId: 'ta-30',
+    accountNumber: 'TA-2026-00030',
+    periodStart: '2026-07-01',
+    periodEnd: '2026-09-30',
+    cededPremium: '100000.0000',
+    cededLosses: '130000.0000',
+    commission: '50000.0000',
+    otherCharges: '50000.0000',
+    balance: '-30000.0000',
+    status: 'DRAFT'
+  });
+  const state = emptyState([draft]);
+  state.lines['ta-30'] = LINE_TYPE_OPTIONS.map(([lineType], index) => accountLine({
+    id: `line-${index + 1}`,
+    lineType,
+    reference: `REF-2026-${String(index + 1).padStart(3, '0')}`,
+    description: `${lineType} line`,
+    amount: amounts[lineType],
+    sequence: index + 1
+  }));
+  await mockContractApi(page, state);
+
+  await openTechnicalAccounts(page);
+  await expandLines(page);
+  const panel = page.getByTestId('technical-account-lines-panel');
+
+  // The add form exposes the whole line-type domain with human labels.
+  const options = await page.getByLabel('Line type').locator('option').evaluateAll(
+    (nodes) => nodes.map((node) => ({ value: node.value, label: node.textContent.trim() }))
+  );
+  expect(options).toEqual(
+    LINE_TYPE_OPTIONS.map(([value, label]) => ({ value, label }))
+  );
+
+  const rows = panel.getByTestId('technical-account-line-row');
+  await expect(rows).toHaveCount(LINE_TYPE_OPTIONS.length);
+  await expect(panel.getByTestId('technical-account-line-type-count')).toHaveText('13 types');
+  await expect(panel.getByTestId('technical-account-line-bucket-count')).toHaveText('4 buckets');
+
+  // Every detail type shows its human label and its bucket in the totals table.
+  for (const [index, [type, label, bucket]] of LINE_TYPE_OPTIONS.entries()) {
+    await expect(rows.nth(index).getByTestId('technical-account-line-type')).toHaveText(label);
+    const total = panel.getByTestId(`technical-account-line-total-${type}`);
+    await expect(total).toContainText(label);
+    await expect(total).toContainText(bucket);
+    await expect(total).toContainText(usd(amounts[type]));
+  }
+
+  // The four bucket totals aggregate the mapped types exactly.
+  const bucketTotals = [
+    ['premium', 1, '100000.0000'],
+    ['loss', 6, '130000.0000'],
+    ['commission', 2, '50000.0000'],
+    ['other', 4, '50000.0000']
+  ];
+  for (const [bucket, count, amount] of bucketTotals) {
+    const row = panel.getByTestId(`technical-account-line-bucket-${bucket}`);
+    await expect(row.getByTestId(`technical-account-line-bucket-${bucket}-count`))
+      .toHaveText(String(count));
+    await expect(row.getByTestId(`technical-account-line-bucket-${bucket}-amount`))
+      .toHaveText(usd(amount));
+  }
+
+  // Header reconciliation still compares each bucket's lines with its header
+  // component, plus the derived balance.
+  const components = [
+    ['premium', '100000.0000'],
+    ['losses', '130000.0000'],
+    ['commission', '50000.0000'],
+    ['otherCharges', '50000.0000']
+  ];
+  for (const [component, amount] of components) {
+    await expect(panel.getByTestId(`technical-account-reconciliation-${component}-lines`))
+      .toHaveText(usd(amount));
+  }
+  await expect(panel.getByTestId('technical-account-reconciliation-balance-lines'))
+    .toHaveText(usd('-30000'));
+  await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveText('Reconciled');
+  await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveClass(/green/);
+});
+
+test('posts each add-line option with its amount as a 4-dp decimal string', async ({ page }) => {
+  test.setTimeout(90000);
+  const draft = account({
+    accountId: 'ta-30',
+    accountNumber: 'TA-2026-00030',
+    periodStart: '2026-07-01',
+    periodEnd: '2026-09-30',
+    cededPremium: '0.0000',
+    cededLosses: '0.0000',
+    commission: '0.0000',
+    otherCharges: '0.0000',
+    balance: '0.0000',
+    status: 'DRAFT'
+  });
+  const state = emptyState([draft]);
+  await mockContractApi(page, state);
+
+  await openTechnicalAccounts(page);
+  await expandLines(page);
+  const panel = page.getByTestId('technical-account-lines-panel');
+
+  for (const [index, [type, label]] of LINE_TYPE_OPTIONS.entries()) {
+    await page.getByLabel('Line type').selectOption(type);
+    await page.getByLabel('Amount').fill('1000.5');
+    await page.getByRole('button', { name: 'Add line' }).click();
+
+    await expect.poll(() => state.linePosts.length).toBe(index + 1);
+    expect(state.linePosts[index]).toEqual({
+      path: `/api/v1/contracts/${CONTRACT_ID}/technical-accounts/ta-30/lines`,
+      body: { lineType: type, amount: '1000.5000' },
+      tenant: TENANT,
+      accountId: 'ta-30'
+    });
+
+    // The form resets for the next line and the created line renders by label.
+    await expect(page.getByLabel('Amount')).toHaveValue('');
+    await expect(page.getByLabel('Line type')).toHaveValue('PREMIUM');
+    const rows = panel.getByTestId('technical-account-line-row');
+    await expect(rows).toHaveCount(index + 1);
+    await expect(rows.nth(index).getByTestId('technical-account-line-type')).toHaveText(label);
+  }
 });
 
 test('deletes a line only after confirmation and updates the totals', async ({ page }) => {
@@ -719,7 +901,7 @@ test('deletes a line only after confirmation and updates the totals', async ({ p
     accountLine({ id: 'line-1', lineType: 'PREMIUM', amount: '1000000.0000', sequence: 1 }),
     accountLine({
       id: 'line-2',
-      lineType: 'LOSS',
+      lineType: 'PAID_LOSS',
       reference: 'LOSS-2026-001',
       description: 'Q1 paid loss',
       amount: '250000.0000',
@@ -800,7 +982,7 @@ test('an issued statement exposes its lines as immutable', async ({ page }) => {
     accountLine({
       id: 'line-2',
       technicalAccountId: 'ta-20',
-      lineType: 'LOSS',
+      lineType: 'PAID_LOSS',
       amount: '500000.0000',
       sequence: 2
     }),
@@ -851,7 +1033,7 @@ test('a line-reconciliation 409 on issue shows the detail and keeps the statemen
     }),
     accountLine({
       id: 'line-2',
-      lineType: 'LOSS',
+      lineType: 'PAID_LOSS',
       reference: 'LOSS-2026-001',
       description: 'Q1 paid loss',
       amount: '250000.0000',

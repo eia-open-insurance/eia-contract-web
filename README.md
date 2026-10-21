@@ -57,10 +57,15 @@ outstanding balance of ISSUED statements only, and the account count. **Issue**
 `/technical-accounts/{accountId}/status`. Each account row also expands to show
 its statement lines from
 `GET /api/v1/contracts/{id}/technical-accounts/{accountId}/lines`: type,
-reference, description, amount, and delete, with totals grouped by line type,
-a header-versus-lines reconciliation table, and a reconciled indicator at the
-CTR-08 0.01 tolerance. A DRAFT statement can add a line (type, reference,
-description, amount) and delete one; ISSUED and SETTLED statements are read-only.
+reference, description, amount, and delete, with totals grouped by line type and
+by the four financial buckets (premium, loss, commission, other), a
+header-versus-lines reconciliation table, and a reconciled indicator at the
+CTR-08 0.01 tolerance. The add form offers the full line-type domain — PREMIUM,
+COMMISSION, BROKERAGE, PAID_LOSS, OUTSTANDING_LOSS, IBNR, ALAE, REINSTATEMENT,
+CASH_CALL, FUNDS_WITHHELD, TAX, ADJUSTMENT, and OTHER — each displayed with a
+human label and rolled into its bucket for the header reconciliation. A DRAFT
+statement can add a line (type, reference, description, amount) and delete one;
+ISSUED and SETTLED statements are read-only.
 If Issue returns `409 ACCOUNT_LINES_DO_NOT_RECONCILE`, the expanded detail shows
 the service's explanation while the statement stays DRAFT. A context note
 explains that a technical account is a period statement, the contract remains
