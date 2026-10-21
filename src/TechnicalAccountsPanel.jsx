@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Fragment, useEffect, useMemo, useState } from 'react';
 import { apiFetch, errorMessage } from './api';
+import TechnicalAccountLines from './TechnicalAccountLines';
 import {
   accountBalance,
   accountCededLosses,
@@ -71,6 +72,8 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [message, setMessage] = useState('');
+  const [expandedId, setExpandedId] = useState('');
+  const [reconcileErrors, setReconcileErrors] = useState({});
 
   async function load() {
     if (!contractId) {
@@ -97,8 +100,25 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
     setForm(initialForm(currency));
     setMessage('');
     setActionError('');
+    setExpandedId('');
+    setReconcileErrors({});
     load();
   }, [contractId, currency]);
+
+  function toggleLines(row) {
+    const id = accountId(row);
+    if (!id) return;
+    setExpandedId((current) => (current === id ? '' : id));
+  }
+
+  function clearReconcileError(id) {
+    setReconcileErrors((current) => {
+      if (!current[id]) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }
 
   function update(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -141,6 +161,7 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
     const id = accountId(row);
     setMessage('');
     setActionError('');
+    clearReconcileError(id);
     setActionBusy(id);
     try {
       await apiFetch(technicalAccountStatusEndpoint(contractId, id), {
@@ -153,6 +174,24 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
         onChanged();
       }
     } catch (error) {
+      if (error.status === 409 && error.code === 'ACCOUNT_LINES_DO_NOT_RECONCILE') {
+        // The service rejected the issue because the statement lines do not
+        // reconcile to the header. Keep the row on its server status (DRAFT) and
+        // show the conflict in the expanded detail with the service's own
+        // expected/actual explanation.
+        setReconcileErrors((current) => ({
+          ...current,
+          [id]: {
+            code: error.code,
+            message: error.message,
+            details: error.details || [],
+            payload: error.payload || null
+          }
+        }));
+        setExpandedId(id);
+        await load();
+        return;
+      }
       setActionError(errorMessage(error));
       if (error.status === 409) {
         await load();
@@ -264,7 +303,8 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
         <p>
           A technical account is a period statement of ceded premium, ceded losses, commission, and
           other charges. The contract remains the source of its terms; FS-RI and SAP own the posted
-          amounts. Issuing or settling a statement never changes the contract record.
+          amounts. A DRAFT statement's lines must reconcile to its header within 0.01 before issue,
+          and an issued statement's lines are immutable.
         </p>
       </div>
 
@@ -383,6 +423,7 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
         <table className="eia-table" aria-label="Technical accounts">
           <thead>
             <tr>
+              <th aria-label="Statement lines" />
               <th>Account</th>
               <th>Period</th>
               <th>Ceded premium</th>
@@ -399,56 +440,91 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
               const status = accountStatus(row);
               const rowCurrency = accountCurrency(row) || currency;
               const id = accountId(row);
+              const expanded = Boolean(id) && expandedId === id;
               return (
-                <tr key={id || accountNumber(row)} data-testid="technical-account-row">
-                  <td className="eia-mono" data-testid="technical-account-number">
-                    {accountNumber(row) || '—'}
-                  </td>
-                  <td data-testid="technical-account-period">{formatPeriod(row)}</td>
-                  <td data-testid="technical-account-ceded-premium">
-                    {formatAmount(accountCededPremium(row), rowCurrency)}
-                  </td>
-                  <td data-testid="technical-account-ceded-losses">
-                    {formatAmount(accountCededLosses(row), rowCurrency)}
-                  </td>
-                  <td data-testid="technical-account-commission">
-                    {formatAmount(accountCommission(row), rowCurrency)}
-                  </td>
-                  <td data-testid="technical-account-balance">
-                    {formatAmount(accountBalance(row), rowCurrency)}
-                  </td>
-                  <td>
-                    <span className={`eia-pill ${statusTone(status)}`} data-testid="technical-account-status">
-                      {status || '—'}
-                    </span>
-                  </td>
-                  <td data-testid="technical-account-action">
-                    {action ? (
+                <Fragment key={id || accountNumber(row)}>
+                  <tr data-testid="technical-account-row">
+                    <td data-testid="technical-account-expand-cell">
                       <button
                         type="button"
-                        className="eia-btn-secondary"
-                        onClick={() => applyAction(row, action)}
-                        disabled={!id || busy || Boolean(actionBusy)}
+                        className="eia-btn-ghost technical-account-expand"
+                        aria-expanded={expanded}
+                        aria-controls={`technical-account-lines-${id}`}
+                        aria-label={`${expanded ? 'Hide' : 'Show'} lines for technical account ${accountNumber(row) || id}`}
+                        data-testid="technical-account-expand"
+                        onClick={() => toggleLines(row)}
+                        disabled={!id}
                       >
-                        {actionBusy === id ? 'Saving…' : action.label}
+                        <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+                        {' '}Lines
                       </button>
-                    ) : (
-                      <span className="eia-muted">—</span>
-                    )}
-                  </td>
-                </tr>
+                    </td>
+                    <td className="eia-mono" data-testid="technical-account-number">
+                      {accountNumber(row) || '—'}
+                    </td>
+                    <td data-testid="technical-account-period">{formatPeriod(row)}</td>
+                    <td data-testid="technical-account-ceded-premium">
+                      {formatAmount(accountCededPremium(row), rowCurrency)}
+                    </td>
+                    <td data-testid="technical-account-ceded-losses">
+                      {formatAmount(accountCededLosses(row), rowCurrency)}
+                    </td>
+                    <td data-testid="technical-account-commission">
+                      {formatAmount(accountCommission(row), rowCurrency)}
+                    </td>
+                    <td data-testid="technical-account-balance">
+                      {formatAmount(accountBalance(row), rowCurrency)}
+                    </td>
+                    <td>
+                      <span className={`eia-pill ${statusTone(status)}`} data-testid="technical-account-status">
+                        {status || '—'}
+                      </span>
+                    </td>
+                    <td data-testid="technical-account-action">
+                      {action ? (
+                        <button
+                          type="button"
+                          className="eia-btn-secondary"
+                          onClick={() => applyAction(row, action)}
+                          disabled={!id || busy || Boolean(actionBusy)}
+                        >
+                          {actionBusy === id ? 'Saving…' : action.label}
+                        </button>
+                      ) : (
+                        <span className="eia-muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                  {expanded && (
+                    <tr
+                      className="eia-technical-account-expanded"
+                      data-testid="technical-account-lines-row"
+                    >
+                      <td colSpan={9} id={`technical-account-lines-${id}`}>
+                        <TechnicalAccountLines
+                          contractId={contractId}
+                          account={row}
+                          currency={rowCurrency}
+                          reconcileError={reconcileErrors[id] || null}
+                          onLinesChanged={clearReconcileError}
+                          onAccountChanged={load}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
             {loading && (
               <tr>
-                <td className="eia-muted" colSpan={8} data-testid="technical-account-loading">
+                <td className="eia-muted" colSpan={9} data-testid="technical-account-loading">
                   Loading technical accounts…
                 </td>
               </tr>
             )}
             {!loading && !loadError && sorted.length === 0 && (
               <tr>
-                <td className="eia-muted" colSpan={8} data-testid="technical-account-empty">
+                <td className="eia-muted" colSpan={9} data-testid="technical-account-empty">
                   No technical accounts yet for this contract.
                 </td>
               </tr>

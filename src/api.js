@@ -21,6 +21,10 @@ export async function apiFetch(path, options = {}) {
     const error = new Error((payload && payload.message) || `Request failed: ${response.status}`);
     error.code = payload && payload.code;
     error.status = response.status;
+    // Keep the structured body: conflict responses carry field-level details that
+    // a screen needs to explain (for example why statement lines do not reconcile).
+    error.details = Array.isArray(payload?.details) ? payload.details : [];
+    error.payload = payload;
     throw error;
   }
   return payload;

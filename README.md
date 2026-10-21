@@ -54,10 +54,19 @@ the computed balance preview (`ceded premium − ceded losses − commission + o
 charges`). Summary cards total ceded premium, ceded losses, commission, the
 outstanding balance of ISSUED statements only, and the account count. **Issue**
 (DRAFT → ISSUED) and **Settle** (ISSUED → SETTLED) are confirmed PATCHes to
-`/technical-accounts/{accountId}/status`. A context note explains that a
-technical account is a period statement, the contract remains the source of its
-terms, and FS-RI/SAP own the posted amounts; load failures stay inside the tab
-and never block the contract record.
+`/technical-accounts/{accountId}/status`. Each account row also expands to show
+its statement lines from
+`GET /api/v1/contracts/{id}/technical-accounts/{accountId}/lines`: type,
+reference, description, amount, and delete, with totals grouped by line type,
+a header-versus-lines reconciliation table, and a reconciled indicator at the
+CTR-08 0.01 tolerance. A DRAFT statement can add a line (type, reference,
+description, amount) and delete one; ISSUED and SETTLED statements are read-only.
+If Issue returns `409 ACCOUNT_LINES_DO_NOT_RECONCILE`, the expanded detail shows
+the service's explanation while the statement stays DRAFT. A context note
+explains that a technical account is a period statement, the contract remains
+the source of its terms, FS-RI/SAP own the posted amounts, and a DRAFT's lines
+must reconcile before issue; load failures stay inside the tab and never block
+the contract record.
 
 The **Cash calls** tab sits directly after Technical accounts and lists the
 selected contract's interim funding requests newest period first from
@@ -112,8 +121,10 @@ record discovery (deep links, queue filtering, predictive party lookup,
 party-label resolution and fallback, and cross-links), and linked-document
 visibility (query and tenant header, document links, empty state, contained
 error, and non-blocking fetch), plus technical accounts (newest-first listing,
-create payload and balance preview, confirmed issue/settle payloads, empty,
-load-error, and 409 states), cash calls (newest-first listing and summary
+create payload and balance preview, confirmed issue/settle payloads, expandable
+statement lines with totals and reconciliation, line add/delete payloads,
+immutable issued lines, empty, load-error, duplicate-period 409, and
+line-reconciliation 409 states), cash calls (newest-first listing and summary
 counts/amounts/overdue due dates, create payload and local period/amount
 validation, confirmed issue, settle, and cancel payloads, empty, load-error, and
 create/status 409 states), security (summary totals and active/released counts,

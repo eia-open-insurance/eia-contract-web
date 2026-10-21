@@ -40,12 +40,33 @@ function account(overrides = {}) {
 function emptyState(accounts = []) {
   return {
     accounts,
+    lines: {},
     listRequests: [],
+    lineRequests: [],
     posts: [],
+    linePosts: [],
+    lineDeletes: [],
     patches: [],
     listError: null,
     createError: null,
-    statusError: null
+    statusError: null,
+    lineListError: null,
+    lineCreateError: null,
+    lineDeleteError: null
+  };
+}
+
+function accountLine(overrides = {}) {
+  return {
+    id: 'line-1',
+    tenantId: TENANT,
+    accountId: 'ta-30',
+    lineType: 'PREMIUM',
+    reference: 'BORD-2026-001',
+    description: 'Q1 premium',
+    amount: '1000000.0000',
+    createdAt: '2026-04-01T09:30:00Z',
+    ...overrides
   };
 }
 
@@ -59,6 +80,21 @@ function balanceOf(body) {
     - Number(body.commission || 0)
     + Number(body.otherCharges || 0);
   return total.toFixed(4);
+}
+
+function totalsOf(lines) {
+  const totals = { premium: 0, loss: 0, commission: 0, other: 0 };
+  const buckets = { PREMIUM: 'premium', LOSS: 'loss', COMMISSION: 'commission' };
+  for (const line of lines) {
+    const key = buckets[String(line.lineType || '').toUpperCase()] || 'other';
+    totals[key] += Number(line.amount || 0);
+  }
+  return {
+    premium: totals.premium.toFixed(4),
+    loss: totals.loss.toFixed(4),
+    commission: totals.commission.toFixed(4),
+    other: totals.other.toFixed(4)
+  };
 }
 
 /**
@@ -139,6 +175,63 @@ async function mockContractApi(page, state) {
       }
     }
 
+    const linesMatch = path.match(
+      /^\/api\/v1\/contracts\/([^/]+)\/technical-accounts\/([^/]+)\/lines$/
+    );
+    if (linesMatch && linesMatch[1] === CONTRACT_ID) {
+      const accountId = linesMatch[2];
+      const bucket = state.lines[accountId] || (state.lines[accountId] = []);
+      if (method === 'GET') {
+        state.lineRequests.push({ path, tenant, accountId });
+        if (state.lineListError) {
+          await json(route, state.lineListError.status, state.lineListError.body);
+          return;
+        }
+        await json(route, 200, {
+          items: bucket,
+          totals: totalsOf(bucket)
+        });
+        return;
+      }
+      if (method === 'POST') {
+        const body = request.postDataJSON();
+        state.linePosts.push({ path, body, tenant, accountId });
+        if (state.lineCreateError) {
+          await json(route, state.lineCreateError.status, state.lineCreateError.body);
+          return;
+        }
+        const created = {
+          id: `line-${bucket.length + 1}`,
+          tenantId: TENANT,
+          accountId,
+          lineType: body.lineType,
+          reference: body.reference ?? null,
+          description: body.description ?? null,
+          amount: body.amount,
+          createdAt: '2026-04-01T09:30:00Z'
+        };
+        bucket.push(created);
+        await json(route, 201, created);
+        return;
+      }
+    }
+
+    const lineMatch = path.match(
+      /^\/api\/v1\/contracts\/([^/]+)\/technical-accounts\/([^/]+)\/lines\/([^/]+)$/
+    );
+    if (method === 'DELETE' && lineMatch && lineMatch[1] === CONTRACT_ID) {
+      const [, , accountId, lineId] = lineMatch;
+      state.lineDeletes.push({ path, tenant, accountId, lineId });
+      if (state.lineDeleteError) {
+        await json(route, state.lineDeleteError.status, state.lineDeleteError.body);
+        return;
+      }
+      state.lines[accountId] = (state.lines[accountId] || [])
+        .filter((candidate) => String(candidate.id) !== lineId);
+      await route.fulfill({ status: 204, body: '' });
+      return;
+    }
+
     const statusMatch = path.match(/^\/api\/v1\/contracts\/([^/]+)\/technical-accounts\/([^/]+)\/status$/);
     if (method === 'PATCH' && statusMatch && statusMatch[1] === CONTRACT_ID) {
       const body = request.postDataJSON();
@@ -164,6 +257,11 @@ async function openTechnicalAccounts(page) {
   await expect(page.getByRole('heading', { name: contract.contractNumber, level: 2 })).toBeVisible();
   await page.getByRole('button', { name: 'Technical accounts', exact: true }).click();
   await expect(page.getByTestId('technical-accounts-panel')).toBeVisible();
+}
+
+async function expandLines(page, index = 0) {
+  await page.getByTestId('technical-account-expand').nth(index).click();
+  await expect(page.getByTestId('technical-account-lines-panel')).toBeVisible();
 }
 
 test('lists technical accounts newest period first with the ceded totals and issued-only balance', async ({ page }) => {
@@ -459,4 +557,368 @@ test('shows a 409 when a duplicate statement period is rejected, keeping the for
   await expect(page.getByTestId('technical-account-empty')).toBeVisible();
   await expect(page.getByTestId('technical-account-message')).toHaveCount(0);
   await expect(page.getByTestId('technical-account-summary-count')).toHaveText('0');
+});
+
+test('expands a statement to list its lines, totals by type, and a reconciled header', async ({ page }) => {
+  const draft = account({
+    accountId: 'ta-30',
+    accountNumber: 'TA-2026-00030',
+    periodStart: '2026-07-01',
+    periodEnd: '2026-09-30',
+    cededPremium: '1000000.0000',
+    cededLosses: '250000.0000',
+    commission: '100000.0000',
+    balance: '650000.0000',
+    status: 'DRAFT'
+  });
+  const state = emptyState([draft]);
+  state.lines['ta-30'] = [
+    accountLine({
+      id: 'line-1',
+      lineType: 'PREMIUM',
+      reference: 'BORD-2026-001',
+      description: 'Q1 premium',
+      amount: '1000000.0000',
+      sequence: 1
+    }),
+    accountLine({
+      id: 'line-2',
+      lineType: 'LOSS',
+      reference: 'LOSS-2026-001',
+      description: 'Q1 paid loss',
+      amount: '250000.0000',
+      sequence: 2
+    }),
+    accountLine({
+      id: 'line-3',
+      lineType: 'COMMISSION',
+      reference: 'COMM-2026-001',
+      description: 'Q1 ceding commission',
+      amount: '100000.0000',
+      sequence: 3
+    })
+  ];
+  await mockContractApi(page, state);
+
+  await openTechnicalAccounts(page);
+  await expect(page.getByTestId('technical-account-lines-panel')).toHaveCount(0);
+
+  await expandLines(page);
+  await expect.poll(() => state.lineRequests.length).toBe(1);
+  expect(state.lineRequests[0]).toEqual({
+    path: `/api/v1/contracts/${CONTRACT_ID}/technical-accounts/ta-30/lines`,
+    tenant: TENANT,
+    accountId: 'ta-30'
+  });
+
+  const panel = page.getByTestId('technical-account-lines-panel');
+  const lineRows = panel.getByTestId('technical-account-line-row');
+  await expect(lineRows).toHaveCount(3);
+  await expect(lineRows.nth(0).getByTestId('technical-account-line-type')).toHaveText('Premium');
+  await expect(lineRows.nth(0).getByTestId('technical-account-line-reference')).toHaveText('BORD-2026-001');
+  await expect(lineRows.nth(0).getByTestId('technical-account-line-description')).toHaveText('Q1 premium');
+  await expect(lineRows.nth(0).getByTestId('technical-account-line-amount')).toHaveText('$1,000,000.00');
+  await expect(lineRows.nth(1).getByTestId('technical-account-line-type')).toHaveText('Loss');
+  await expect(lineRows.nth(2).getByTestId('technical-account-line-type')).toHaveText('Commission');
+
+  await expect(panel.getByTestId('technical-account-line-count')).toHaveText('3 lines');
+  await expect(panel.getByTestId('technical-account-line-total-PREMIUM')).toContainText('Ceded premium');
+  await expect(panel.getByTestId('technical-account-line-total-LOSS')).toContainText('Ceded losses');
+  await expect(panel.getByTestId('technical-account-line-total-COMMISSION')).toContainText('Commission');
+
+  await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveText('Reconciled');
+  await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveClass(/green/);
+  await expect(panel.getByTestId('technical-account-reconciliation-premium-header')).toHaveText('$1,000,000.00');
+  await expect(panel.getByTestId('technical-account-reconciliation-premium-lines')).toHaveText('$1,000,000.00');
+  await expect(panel.getByTestId('technical-account-reconciliation-losses-lines')).toHaveText('$250,000.00');
+  await expect(panel.getByTestId('technical-account-reconciliation-commission-lines')).toHaveText('$100,000.00');
+  await expect(panel.getByTestId('technical-account-reconciliation-balance-lines')).toHaveText('$650,000.00');
+  await expect(panel.getByTestId('technical-account-reconciliation-balance-difference')).toHaveText('$0.00');
+
+  // The row is expandable both ways; collapsing removes the detail panel.
+  await page.getByTestId('technical-account-expand').click();
+  await expect(panel).toHaveCount(0);
+});
+
+test('adds a line to a DRAFT statement and recomputes the reconciliation', async ({ page }) => {
+  const draft = account({
+    accountId: 'ta-30',
+    accountNumber: 'TA-2026-00030',
+    periodStart: '2026-07-01',
+    periodEnd: '2026-09-30',
+    cededPremium: '1000000.0000',
+    cededLosses: '250000.0000',
+    commission: '100000.0000',
+    balance: '650000.0000',
+    status: 'DRAFT'
+  });
+  const state = emptyState([draft]);
+  state.lines['ta-30'] = [
+    accountLine({ id: 'line-1', lineType: 'PREMIUM', amount: '1000000.0000', sequence: 1 }),
+    accountLine({
+      id: 'line-2',
+      lineType: 'COMMISSION',
+      reference: 'COMM-2026-001',
+      description: 'Q1 ceding commission',
+      amount: '100000.0000',
+      sequence: 2
+    })
+  ];
+  await mockContractApi(page, state);
+
+  await openTechnicalAccounts(page);
+  await expandLines(page);
+  const panel = page.getByTestId('technical-account-lines-panel');
+  await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveText('Not reconciled');
+  await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveClass(/red/);
+  await expect(panel.getByTestId('technical-account-line-form')).toBeVisible();
+
+  await page.getByLabel('Line type').selectOption('LOSS');
+  await page.getByLabel('Reference').fill('LOSS-2026-001');
+  await page.getByLabel('Description').fill('Q1 paid loss');
+  await page.getByLabel('Amount').fill('250000');
+  await page.getByRole('button', { name: 'Add line' }).click();
+
+  await expect.poll(() => state.linePosts.length).toBe(1);
+  expect(state.linePosts[0]).toEqual({
+    path: `/api/v1/contracts/${CONTRACT_ID}/technical-accounts/ta-30/lines`,
+    body: {
+      lineType: 'LOSS',
+      reference: 'LOSS-2026-001',
+      description: 'Q1 paid loss',
+      amount: '250000.0000'
+    },
+    tenant: TENANT,
+    accountId: 'ta-30'
+  });
+
+  await expect(panel.getByTestId('technical-account-line-row')).toHaveCount(3);
+  await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveText('Reconciled');
+  await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveClass(/green/);
+  await expect(panel.getByTestId('technical-account-line-message')).toHaveText(
+    'Loss line recorded.'
+  );
+  await expect(page.getByLabel('Amount')).toHaveValue('');
+  await expect(page.getByLabel('Line type')).toHaveValue('PREMIUM');
+});
+
+test('deletes a line only after confirmation and updates the totals', async ({ page }) => {
+  const draft = account({
+    accountId: 'ta-30',
+    accountNumber: 'TA-2026-00030',
+    periodStart: '2026-07-01',
+    periodEnd: '2026-09-30',
+    cededPremium: '1000000.0000',
+    cededLosses: '250000.0000',
+    commission: '100000.0000',
+    balance: '650000.0000',
+    status: 'DRAFT'
+  });
+  const state = emptyState([draft]);
+  state.lines['ta-30'] = [
+    accountLine({ id: 'line-1', lineType: 'PREMIUM', amount: '1000000.0000', sequence: 1 }),
+    accountLine({
+      id: 'line-2',
+      lineType: 'LOSS',
+      reference: 'LOSS-2026-001',
+      description: 'Q1 paid loss',
+      amount: '250000.0000',
+      sequence: 2
+    }),
+    accountLine({
+      id: 'line-3',
+      lineType: 'COMMISSION',
+      reference: 'COMM-2026-001',
+      description: 'Q1 ceding commission',
+      amount: '100000.0000',
+      sequence: 3
+    })
+  ];
+  await mockContractApi(page, state);
+
+  const dialogs = [];
+  let acceptDialogs = false;
+  page.on('dialog', async (dialog) => {
+    dialogs.push(dialog.message());
+    if (acceptDialogs) {
+      await dialog.accept();
+    } else {
+      await dialog.dismiss();
+    }
+  });
+
+  await openTechnicalAccounts(page);
+  await expandLines(page);
+  const panel = page.getByTestId('technical-account-lines-panel');
+  const lineRows = panel.getByTestId('technical-account-line-row');
+  await expect(lineRows).toHaveCount(3);
+  await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveText('Reconciled');
+
+  // Dismissing the confirmation sends nothing.
+  await lineRows.nth(0).getByRole('button', { name: 'Delete' }).click();
+  await page.waitForTimeout(200);
+  expect(state.lineDeletes).toHaveLength(0);
+  await expect(lineRows).toHaveCount(3);
+  dialogs.length = 0;
+
+  acceptDialogs = true;
+  await lineRows.nth(0).getByRole('button', { name: 'Delete' }).click();
+  await expect.poll(() => state.lineDeletes.length).toBe(1);
+  expect(state.lineDeletes[0]).toEqual({
+    path: `/api/v1/contracts/${CONTRACT_ID}/technical-accounts/ta-30/lines/line-1`,
+    tenant: TENANT,
+    accountId: 'ta-30',
+    lineId: 'line-1'
+  });
+  expect(dialogs[0]).toContain('Delete the Premium line BORD-2026-001');
+  await expect(lineRows).toHaveCount(2);
+  await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveText('Not reconciled');
+  await expect(panel.getByTestId('technical-account-line-message')).toHaveText('Premium line deleted.');
+});
+
+test('an issued statement exposes its lines as immutable', async ({ page }) => {
+  const issued = account({
+    accountId: 'ta-20',
+    accountNumber: 'TA-2026-00020',
+    periodStart: '2026-04-01',
+    periodEnd: '2026-06-30',
+    cededPremium: '2000000.0000',
+    cededLosses: '500000.0000',
+    commission: '200000.0000',
+    balance: '1300000.0000',
+    status: 'ISSUED'
+  });
+  const state = emptyState([issued]);
+  state.lines['ta-20'] = [
+    accountLine({
+      id: 'line-1',
+      technicalAccountId: 'ta-20',
+      lineType: 'PREMIUM',
+      amount: '2000000.0000',
+      sequence: 1
+    }),
+    accountLine({
+      id: 'line-2',
+      technicalAccountId: 'ta-20',
+      lineType: 'LOSS',
+      amount: '500000.0000',
+      sequence: 2
+    }),
+    accountLine({
+      id: 'line-3',
+      technicalAccountId: 'ta-20',
+      lineType: 'COMMISSION',
+      amount: '200000.0000',
+      sequence: 3
+    })
+  ];
+  await mockContractApi(page, state);
+
+  await openTechnicalAccounts(page);
+  await expandLines(page);
+  const panel = page.getByTestId('technical-account-lines-panel');
+  await expect(panel.getByTestId('technical-account-line-row')).toHaveCount(3);
+  await expect(panel.getByTestId('technical-account-line-form')).toHaveCount(0);
+  await expect(panel.getByTestId('technical-account-line-form-error')).toHaveCount(0);
+  await expect(panel.getByTestId('technical-account-lines-readonly')).toContainText('ISSUED');
+  await expect(panel.getByRole('button', { name: 'Delete' })).toHaveCount(0);
+  await expect(panel.getByText('Locked')).toHaveCount(3);
+  await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveText('Reconciled');
+  await expect(page.getByTestId('technical-account-row').getByRole('button', { name: 'Settle' })).toBeVisible();
+});
+
+test('a line-reconciliation 409 on issue shows the detail and keeps the statement DRAFT', async ({ page }) => {
+  const draft = account({
+    accountId: 'ta-30',
+    accountNumber: 'TA-2026-00030',
+    periodStart: '2026-07-01',
+    periodEnd: '2026-09-30',
+    cededPremium: '1000000.0000',
+    cededLosses: '250000.0000',
+    commission: '100000.0000',
+    balance: '650000.0000',
+    status: 'DRAFT'
+  });
+  const state = emptyState([draft]);
+  state.lines['ta-30'] = [
+    accountLine({
+      id: 'line-1',
+      lineType: 'PREMIUM',
+      reference: 'BORD-2026-001',
+      description: 'Q1 premium',
+      amount: '900000.0000',
+      sequence: 1
+    }),
+    accountLine({
+      id: 'line-2',
+      lineType: 'LOSS',
+      reference: 'LOSS-2026-001',
+      description: 'Q1 paid loss',
+      amount: '250000.0000',
+      sequence: 2
+    }),
+    accountLine({
+      id: 'line-3',
+      lineType: 'COMMISSION',
+      reference: 'COMM-2026-001',
+      description: 'Q1 ceding commission',
+      amount: '100000.0000',
+      sequence: 3
+    })
+  ];
+  state.statusError = {
+    status: 409,
+    // The public domain proxy forwards the code and message but drops the
+    // expert's per-type field violations; the panel must derive the detail from
+    // the lines it already loaded.
+    body: {
+      code: 'ACCOUNT_LINES_DO_NOT_RECONCILE',
+      message: 'Technical account TA-2026-00030 line totals do not reconcile to its header amounts'
+    }
+  };
+  await mockContractApi(page, state);
+
+  page.on('dialog', (dialog) => dialog.accept());
+
+  await openTechnicalAccounts(page);
+  const row = page.getByTestId('technical-account-row');
+  await expect(row.getByTestId('technical-account-status')).toHaveText('DRAFT');
+  await row.getByRole('button', { name: 'Issue' }).click();
+
+  await expect.poll(() => state.patches.length).toBe(1);
+  expect(state.patches[0]).toEqual({
+    path: `/api/v1/contracts/${CONTRACT_ID}/technical-accounts/ta-30/status`,
+    body: { status: 'ISSUED' },
+    tenant: TENANT,
+    accountId: 'ta-30'
+  });
+
+  const detail = page.getByTestId('technical-account-lines-reconcile-error');
+  await expect(detail).toBeVisible();
+  await expect(detail).toContainText('ACCOUNT_LINES_DO_NOT_RECONCILE');
+  await expect(detail).toContainText(
+    'Technical account TA-2026-00030 line totals do not reconcile to its header amounts'
+  );
+  // The detail is derived from the loaded lines when the proxy omits the
+  // expert's field violations.
+  await expect(detail).toContainText(
+    'Ceded premium header $1,000,000.00 vs lines $900,000.00 (difference -$100,000.00)'
+  );
+  await expect(detail).toContainText(
+    'Balance header $650,000.00 vs lines $550,000.00 (difference -$100,000.00)'
+  );
+  await expect(page.getByTestId('technical-account-lines-reconcile-details').locator('li')).toHaveCount(2);
+
+  // The failed issue leaves the server status untouched: the row is still DRAFT
+  // and the issue action remains available for a corrected statement.
+  await expect(row.getByTestId('technical-account-status')).toHaveText('DRAFT');
+  await expect(row.getByRole('button', { name: 'Issue' })).toBeVisible();
+  await expect(page.getByTestId('technical-account-message')).toHaveCount(0);
+
+  const panel = page.getByTestId('technical-account-lines-panel');
+  await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveText('Not reconciled');
+  await expect(panel.getByTestId('technical-account-lines-reconciled')).toHaveClass(/red/);
+  await expect(panel.getByTestId('technical-account-reconciliation-premium-difference')).toHaveText('-$100,000.00');
+  await expect(panel.getByTestId('technical-account-reconciliation-balance-difference')).toHaveText('-$100,000.00');
+  await expect(panel.locator('table[aria-label="Statement lines"]')).toBeVisible();
 });

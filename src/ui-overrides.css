@@ -126,3 +126,101 @@
   background: transparent !important;
   text-decoration: underline;
 }
+
+/* Technical-account statement lines: the expand control is a compact chevron
+   plus label, and the expanded panel is a nested section inside the row. */
+.eia-table .technical-account-expand {
+  white-space: nowrap;
+  color: var(--eia-blue) !important;
+  font-size: 11px !important;
+  padding: 2px 5px !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  text-decoration: none !important;
+}
+
+.eia-table .technical-account-expand:hover {
+  background: var(--eia-soft) !important;
+  border-color: #d5e2ee !important;
+  text-decoration: none !important;
+}
+
+.technical-account-expand span[aria-hidden="true"] {
+  display: inline-block;
+  width: 9px;
+  color: var(--eia-muted);
+  font-size: 10px;
+}
+
+.eia-technical-account-expanded > td {
+  padding: 0 !important;
+  background: #f5f8fb !important;
+  border-top: 1px solid var(--eia-line) !important;
+}
+
+.eia-technical-account-expanded:hover > td {
+  background: #f5f8fb !important;
+}
+
+.technical-account-lines {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 16px 18px 18px;
+  background: transparent;
+}
+
+.technical-account-lines > .eia-section-title h3,
+.technical-account-lines > .eia-section-title h4 {
+  margin: 0;
+}
+
+.eia-subheading {
+  margin: 0;
+  font-size: 12px;
+  color: var(--eia-navy);
+  letter-spacing: .01em;
+}
+
+.eia-line-form {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--eia-line);
+}
+
+.eia-reconcile-conflict {
+  background: #fdf0f0;
+  border: 1px solid #e8b4b4;
+  border-left: 3px solid var(--eia-red);
+  border-radius: 6px;
+  padding: 11px 13px;
+  margin: 10px 0 12px;
+  font-size: 12px;
+  color: var(--eia-red);
+}
+
+.eia-reconcile-conflict strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.eia-reconcile-conflict ul {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+
+.eia-reconcile-conflict li {
+  margin: 3px 0;
+  color: #6b2525;
+}
+
+.eia-reconcile-conflict p {
+  margin: 6px 0 0;
+  color: #6b2525;
+  font-size: 11px;
+}
+
+.eia-reconcile-label {
+  font-weight: 700;
+  text-transform: capitalize;
+}

@@ -96,6 +96,25 @@ the contract remains the source of its terms, and FS-RI/SAP own the posted
 amounts — and contains load, create, and conflict failures locally so the
 contract record stays usable.
 
+Each technical-account row expands through a chevron button. The expanded panel
+reads `GET /api/v1/contracts/{contractId}/technical-accounts/{accountId}/lines`
+with the tenant header and shows the statement lines (type, reference,
+description, amount, and delete), a totals-by-type table, and a reconciliation
+table comparing each header component with the same bucket of line types
+(PREMIUM, LOSS, COMMISSION, OTHER) and the derived balance. The reconciled
+indicator follows CTR-08: every component and the balance must match within
+0.01. A DRAFT statement shows an add form for line type, reference, description,
+and amount and posts
+`{ lineType, reference?, description?, amount }` with the amount as a 4-dp
+decimal string; a line is deleted with `DELETE …/lines/{lineId}` after
+confirmation. ISSUED and SETTLED statements expose no add form or delete action
+and show their lines read-only. If the Issue PATCH returns
+`409 ACCOUNT_LINES_DO_NOT_RECONCILE`, the expanded detail shows the service's
+code and message plus the per-component header/lines difference (the public
+domain proxy may omit the expert's field violations), while the row keeps its
+DRAFT status; a later line change clears that conflict. A failed line list stays
+inside the expanded panel and never blocks the account table.
+
 The **Cash calls** tab (directly after Technical accounts) reads
 `GET /api/v1/contracts/{contractId}/cash-calls` with the tenant header and sorts
 the requests newest period first by period end (then period start and call
@@ -179,7 +198,12 @@ summary totals (issued-only outstanding balance), the create form's local period
 validation and exact POST payload with the computed balance preview, the
 confirmed issue/settle PATCH payloads (including a dismissed confirmation), the
 empty state and context note, a contained load failure, and a 409 duplicate-period
-response that preserves the form. `tests/cash-calls.spec.js` covers the
+response that preserves the form. It also covers expanding a row to list the
+lines with the tenant header and totals by type, the reconciled indicator, adding
+a line with its exact POST payload and the reconciliation recomputation, deleting
+a line only after confirmation with its exact DELETE path, the immutable lines of
+an issued statement, and a 409 `ACCOUNT_LINES_DO_NOT_RECONCILE` issue that shows
+the service detail and leaves the row DRAFT. `tests/cash-calls.spec.js` covers the
 newest-period-first listing with the requested/issued counts, issued and settled
 amounts, overdue due dates, correct actions and status tones, and the context
 note; the create form's local period/positive-amount validation and exact POST
@@ -204,7 +228,8 @@ Run with `npm test`; the Playwright config starts the dev server on port 3003.
 
 ## Remaining gaps
 
-- No edition or deletion of child rows.
+- No edition of child rows. Statement lines on a DRAFT technical account can be
+  added and deleted, but not edited; other child rows are read-only.
 - The commutation tab requires the release document id to be pasted; there is no
   document picker.
 - No accessibility audit beyond semantic labels and pressed tab state.
