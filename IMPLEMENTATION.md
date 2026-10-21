@@ -20,7 +20,7 @@ selected record on the right.
 | Layers | List and add layers (number, type, attachment, limit, basis, currency, effective dates, tower note) |
 | Participants | List and add participations; shows the risk-bearing share total per layer and whether it is balanced |
 | Terms | List and add terms with a term code, value, source clause, and effective dates |
-| Security | List and add security; over-collateralisation needs an approval reference |
+| Security | Collateral records with summary totals and active/released counts, a full table, a create form, and confirmed Release/Expire actions |
 | Cessions | List and record cessions with policy/claim references and ceded premium/loss |
 | Technical accounts | Period statements newest period first, with ceded premium/loss/commission totals, an issued-only outstanding balance, a create form with a computed balance preview, and confirmed Issue/Settle actions |
 | Cash calls | Interim funding requests newest period first, with requested/issued counts, issued and settled amounts, overdue due dates, a create form, and confirmed Issue/Cancel/Settle actions |
@@ -116,6 +116,25 @@ own execution — and contains load, create, status, and 409 failures locally so
 the contract record stays usable; a 409 on a status command reloads the row so it
 reflects whatever state won the race.
 
+The **Security** tab reads `GET /api/v1/contracts/{contractId}/security` with the
+tenant header and shows the collateral held against the contract: security type,
+required amount, held amount, currency, provider party, expiry date, approval
+reference, status, and action, in the service's newest-first order. The create
+form posts `securityType`, `requiredAmount` (strictly positive, as a 4-dp decimal
+string), optional `heldAmount` (zero or greater, 4-dp), `currency`, optional
+`providerPartyId`, `expiryDate`, and `approvalRef` to the collection path; the
+service derives the initial status. Five summary cards show the required total,
+held total, outstanding gap (required minus held), the count of records not yet
+RELEASED or EXPIRED, and the RELEASED count. **Release** and **Expire** are
+available on every non-terminal record, ask for confirmation, and PATCH
+`/security/{securityId}/status` with `{ "status": "RELEASED" }` or
+`{ "status": "EXPIRED" }`; a dismissed confirmation sends nothing and both
+outcomes are terminal. The tab carries a collateral context note — security is
+collateral, not cash and not a Payment, and releasing a record does not create a
+Payment — and contains load, create, status, and 409 failures locally so the
+contract record stays usable; a 409 on a status command reloads the collection so
+the row reflects whatever state won the race.
+
 The **Bordereaux** tab reads `GET /api/v1/contracts/{contractId}/bordereaux`
 with the tenant header and sorts the submissions newest period first by period
 end (then period start and bordereau number). Each row shows the bordereau
@@ -175,6 +194,12 @@ counts/totals, the create form's local period validation and exact POST payload
 linked-account message/tab navigation, fail with and without a note, the empty
 state and context note, a contained load failure, a 409 duplicate submission
 that preserves the form, and a 409 process race that reloads the terminal row.
+`tests/security.spec.js` covers the summary totals and active/released counts, all
+table columns and status tones, terminal rows without actions, the create form's
+local amount validation and exact POST payload with the collateral fields, the
+confirmed release and expire PATCH payloads (including a dismissed confirmation),
+the empty state and collateral context note, a contained load failure, and both a
+create 409 that preserves the form and a status 409 that reloads the row.
 Run with `npm test`; the Playwright config starts the dev server on port 3003.
 
 ## Remaining gaps

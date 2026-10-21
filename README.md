@@ -75,6 +75,21 @@ cedent or reinsurer, is not a Payment, and that Payment and FS-RI own execution.
 Load, create, status, and 409 failures stay inside the tab and never block the
 contract record.
 
+The **Security** tab lists the collateral held against the selected contract from
+`GET /api/v1/contracts/{id}/security`, with the type, required and held amounts,
+currency, provider party, expiry date, approval reference, status, and action. A
+create form posts the security type, required and held amounts, currency,
+provider party id, expiry date, and approval reference to the same path; amounts
+are 4-dp decimal strings and the status is derived by the service. Summary cards
+show the required total, held total, outstanding gap (required minus held), the
+active count, and the released count. **Release** and **Expire** are confirmed
+PATCHes to `/security/{securityId}/status` with `{ "status": "RELEASED" |
+"EXPIRED" }`; a dismissed confirmation sends nothing and both outcomes are
+terminal. A context note explains that security is collateral, not cash, and is
+not a Payment, and that releasing a record does not create a Payment. Load,
+create, status, and 409 failures stay inside the tab and never block the contract
+record.
+
 The **Bordereaux** tab lists the cedent's period submissions newest period first
 from `GET /api/v1/contracts/{id}/bordereaux`, with the bordereau number, period,
 received date, line count, premium, loss, commission, status, linked technical
@@ -101,7 +116,10 @@ create payload and balance preview, confirmed issue/settle payloads, empty,
 load-error, and 409 states), cash calls (newest-first listing and summary
 counts/amounts/overdue due dates, create payload and local period/amount
 validation, confirmed issue, settle, and cancel payloads, empty, load-error, and
-create/status 409 states), and bordereaux (newest-first listing and summary
+create/status 409 states), security (summary totals and active/released counts,
+all table columns, create payload and local amount validation, confirmed
+release/expire payloads, empty, load-error, and create/status 409 states), and
+bordereaux (newest-first listing and summary
 counts/totals, create payload and local period validation, confirmed process
 with the linked technical account, fail with and without a note, empty,
 load-error, and create/status 409 states). `IMPLEMENTATION.md` records the

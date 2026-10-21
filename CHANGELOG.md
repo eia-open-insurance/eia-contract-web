@@ -101,6 +101,22 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
   account, fail with and without a note, the empty state and context note, a
   contained load failure, a 409 duplicate submission that preserves the form,
   and a 409 process race that reloads the terminal row.
+- **Security** tab replaces the generic resource section with a dedicated
+  collateral panel: it lists the selected contract's security from
+  `GET /api/v1/contracts/{id}/security` with type, required and held amounts,
+  currency, provider party, expiry, approval reference, status, and action. A
+  create form posts the same collateral fields, and summary cards show the
+  required total, held total, outstanding gap (required minus held), active
+  count, and released count. Confirmed **Release** and **Expire** actions on
+  non-terminal records PATCH
+  `/api/v1/contracts/{contractId}/security/{securityId}/status`; both outcomes are
+  terminal. A context note states that security is collateral, not cash, and not
+  a Payment, and that releasing a record does not create a Payment.
+- Playwright coverage for security: summary totals and active/released counts,
+  all table columns and status tones, terminal rows without actions, the create
+  payload and local amount validation, confirmed release/expire payloads, the
+  empty state and context note, a contained load failure, and create/status 409
+  states.
 
 ### Changed
 

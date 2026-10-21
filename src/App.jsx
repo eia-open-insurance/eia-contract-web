@@ -11,6 +11,7 @@ import CessionsPanel from './CessionsPanel';
 import TechnicalAccountsPanel from './TechnicalAccountsPanel';
 import CashCallsPanel from './CashCallsPanel';
 import BordereauxPanel from './BordereauxPanel';
+import SecurityPanel from './SecurityPanel';
 import ActivityPanel from './ActivityPanel';
 import { activityEndpoint, activityItems } from './activity';
 import {
@@ -65,11 +66,6 @@ const CLAUSE_CODES = [
   'CUT_THROUGH', 'OFFSET', 'ULTIMATE_NET_LOSS', 'OCCURRENCE', 'SUNSET', 'COMMUTATION',
   'REINSTATEMENT', 'LOSS_CORRIDOR', 'LOSS_PORTFOLIO_TRANSFER', 'ADVERSE_DEVELOPMENT',
   'GOVERNING_LAW', 'ARBITRATION'
-];
-
-const SECURITY_TYPES = [
-  'LETTER_OF_CREDIT', 'TRUST_FUND', 'FUNDS_WITHHELD', 'CASH_ADVANCE',
-  'PARENT_GUARANTEE', 'BANK_GUARANTEE', 'SECURITIES'
 ];
 
 const PARTY_SEARCH_ENDPOINT = '/api/v1/parties/search';
@@ -1247,36 +1243,10 @@ export default function App() {
               )}
 
               {tab === 'Security' && (
-                <ResourceSection
-                  title="Security"
-                  description="Collateral held against the reinsurer's obligations."
-                  resource="security"
+                <SecurityPanel
                   contractId={selectedId}
-                  testId="security-panel"
+                  currency={currency}
                   onChanged={refresh}
-                  transform={(payload) => {
-                    if (payload.approvalRef && !payload.approvedAt) {
-                      return { ...payload, approvedAt: new Date().toISOString() };
-                    }
-                    return payload;
-                  }}
-                  columns={[
-                    { key: 'securityType', label: 'Type' },
-                    { key: 'requiredAmount', label: 'Required' },
-                    { key: 'heldAmount', label: 'Held' },
-                    { key: 'currency', label: 'Currency' },
-                    { key: 'expiryDate', label: 'Expiry' },
-                    { key: 'status', label: 'Status' }
-                  ]}
-                  fields={[
-                    { name: 'securityType', label: 'Security type', type: 'select', options: SECURITY_TYPES, defaultValue: 'LETTER_OF_CREDIT', required: true },
-                    { name: 'requiredAmount', label: 'Required amount', placeholder: '5000000', required: true },
-                    { name: 'heldAmount', label: 'Held amount', placeholder: '5000000' },
-                    { name: 'currency', label: 'Currency' },
-                    { name: 'providerPartyId', label: 'Provider party id' },
-                    { name: 'expiryDate', label: 'Expiry date', type: 'date' },
-                    { name: 'approvalRef', label: 'Approval reference' }
-                  ]}
                 />
               )}
 
