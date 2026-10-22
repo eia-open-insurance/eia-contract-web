@@ -76,16 +76,21 @@ the contract record.
 The **Cash calls** tab sits directly after Technical accounts and lists the
 selected contract's interim funding requests newest period first from
 `GET /api/v1/contracts/{id}/cash-calls`, with the call number, period,
-amount/currency, due date, status, notes, and action. A create form posts the
-period start/end, amount, currency, due date, and optional notes to the same
-path; the amount must be positive and is sent as a 4-dp decimal string. Summary
-cards show the requested count, issued count, outstanding issued amount, settled
-amount, and the number of open calls whose due date has passed. **Issue** and
-**Cancel** are the alternatives for a REQUESTED call; an ISSUED call exposes
-**Settle**. Each is a confirmed PATCH to
-`/cash-calls/{cashCallId}/status` with `{ "status": "ISSUED" | "CANCELLED" |
-"SETTLED" }`. A context note explains that a cash call requests funding from the
-cedent or reinsurer, is not a Payment, and that Payment and FS-RI own execution.
+amount/currency, due date, status, settlement reference, notes, and action. A
+create form posts the period start/end, amount, currency, due date, and optional
+notes to the same path; the amount must be positive and is sent as a 4-dp decimal
+string. Summary cards show the requested count, issued count, outstanding issued
+amount, settled amount, and the number of open calls whose due date has passed.
+**Issue** and **Cancel** are the alternatives for a REQUESTED call; an ISSUED call
+exposes **Settle** and **Create payment**. **Settle** opens a modal that requires a
+payment/settlement reference and PATCHes `/cash-calls/{cashCallId}/status` with
+`{ "status": "SETTLED", "reference": "…" }`; the settled row then shows that
+reference. **Create payment** is a cross-remote hand-off to
+`/payment?new=1&sourceType=CONTRACT_CASH_CALL&sourceId=…&sourceReference=…&amount=…&currency=…&payeeName=…`
+using the resolved cedent as the payee when available. It opens Payment's create
+form and does not settle the call. A context note and the settle dialog explain
+that the settlement reference ties the call to the treasury payment, that Payment
+and FS-RI own execution, and that creating a payment does not settle the call.
 Load, create, status, and 409 failures stay inside the tab and never block the
 contract record.
 
@@ -131,11 +136,13 @@ statement lines with totals and reconciliation, line add/delete payloads,
 immutable issued lines, empty, load-error, duplicate-period 409, and
 line-reconciliation 409 states), cash calls (newest-first listing and summary
 counts/amounts/overdue due dates, create payload and local period/amount
-validation, confirmed issue, settle, and cancel payloads, empty, load-error, and
-create/status 409 states), security (summary totals and active/released counts,
-all table columns, create payload and local amount validation, confirmed
-release/expire payloads, empty, load-error, and create/status 409 states), and
-bordereaux (newest-first listing and summary
+validation, confirmed issue and cancel payloads, the required settlement
+reference and its SETTLED payload/row display, the ISSUED-only Payment hand-off
+link and its query parameters, empty, load-error, and create/status 409 states),
+security (summary totals and active/released counts, all table columns, create
+payload and local amount validation, confirmed release/expire payloads, empty,
+load-error, and create/status 409 states), and bordereaux (newest-first listing
+and summary
 counts/totals, create payload and local period validation, confirmed process
 with the linked technical account, fail with and without a note, empty,
 load-error, and create/status 409 states). `IMPLEMENTATION.md` records the

@@ -23,7 +23,7 @@ selected record on the right.
 | Security | Collateral records with summary totals and active/released counts, a full table, a create form, and confirmed Release/Expire actions |
 | Cessions | List and record cessions with policy/claim references and ceded premium/loss |
 | Technical accounts | Period statements newest period first, with ceded premium/loss/commission totals, an issued-only outstanding balance, a create form with a computed balance preview, and confirmed Issue/Settle actions |
-| Cash calls | Interim funding requests newest period first, with requested/issued counts, issued and settled amounts, overdue due dates, a create form, and confirmed Issue/Cancel/Settle actions |
+| Cash calls | Interim funding requests newest period first with requested/issued counts, issued and settled amounts, overdue due dates, a create form, confirmed Issue/Cancel actions, a reference-required Settle dialog with settled-reference display, and an ISSUED-only Payment hand-off link |
 | Bordereaux | Cedent period submissions newest period first with received/processed counts, premium/loss/line totals, a create form, and confirmed Process/Fail actions; processed rows link to the technical account they created |
 | Commutation | Propose, approve, and execute a commutation |
 | Activity | Event-derived, append-only timeline for the selected contract |
@@ -125,21 +125,31 @@ The **Cash calls** tab (directly after Technical accounts) reads
 `GET /api/v1/contracts/{contractId}/cash-calls` with the tenant header and sorts
 the requests newest period first by period end (then period start and call
 number). Each row shows the call number, period, amount and currency, due date,
-status, notes, and the lifecycle actions: a REQUESTED call can be **issued** or
-**cancelled**, and an ISSUED call can be **settled**. Every action asks for
-confirmation and then PATCHes
+status, settlement reference, notes, and the lifecycle actions: a REQUESTED call
+can be **issued** or **cancelled**, and an ISSUED call can be **settled** or
+handed to Payment. Issue and cancel ask for confirmation and then PATCH
 `/api/v1/contracts/{contractId}/cash-calls/{cashCallId}/status` with
-`{ "status": "ISSUED" }`, `{ "status": "CANCELLED" }`, or
-`{ "status": "SETTLED" }`; a dismissed confirmation sends nothing. The create
-form posts `periodStart`, `periodEnd`, `amount` (strictly positive, as a 4-dp
-decimal string), `currency`, `dueDate`, and optional `notes` to the collection
-path. Five summary cards show the requested count, issued count, outstanding
-issued amount (ISSUED only), settled amount, and the number of open calls whose
-due date has passed. The tab carries a context note — a cash call requests
-funding from the cedent or reinsurer, it is not a Payment, and Payment and FS-RI
-own execution — and contains load, create, status, and 409 failures locally so
-the contract record stays usable; a 409 on a status command reloads the row so it
-reflects whatever state won the race.
+`{ "status": "ISSUED" }` or `{ "status": "CANCELLED" }`; a dismissed confirmation
+sends nothing. **Settle** opens a modal instead of a browser confirmation. The
+modal requires a payment/settlement reference, rejects a blank or overlong
+reference locally, and PATCHes `{ "status": "SETTLED", "reference": "…" }`; on
+success the dialog closes, the panel reloads, and the settled row shows the
+reference (the submitted value is retained locally until the service echoes it).
+A settled call with no recorded reference shows an em dash. **Create payment**
+appears only on ISSUED calls and is a cross-remote hand-off to
+`/payment?new=1&sourceType=CONTRACT_CASH_CALL&sourceId={cashCallId}&sourceReference={callNumber}&amount={amount}&currency={currency}[&payeeName={cedent}]`,
+using the contract's resolved cedent display name when one is available. It opens
+Payment's create form; it neither creates nor settles a Payment. The create form
+posts `periodStart`, `periodEnd`, `amount` (strictly positive, as a 4-dp decimal
+string), `currency`, `dueDate`, and optional `notes` to the collection path. Five
+summary cards show the requested count, issued count, outstanding issued amount
+(ISSUED only), settled amount, and the number of open calls whose due date has
+passed. The tab carries a context note and the settle dialog explains that the
+settlement reference ties the call to the treasury Payment, that Payment and FS-RI
+own execution, and that creating a payment does not settle the call. Load,
+create, status, and 409 failures stay local so the contract record stays usable; a
+409 on a status command reloads the row so it reflects whatever state won the
+race.
 
 The **Security** tab reads `GET /api/v1/contracts/{contractId}/security` with the
 tenant header and shows the collateral held against the contract: security type,

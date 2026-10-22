@@ -99,6 +99,17 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
   context note; create payload and local period/positive-amount validation;
   confirmed issue, settle, and cancel payloads; loading, empty, contained
   load-failure, and 409 states.
+- Cash-call settlement reference and Payment hand-off: **Settle** now opens a
+  modal that requires a payment/settlement reference and PATCHes
+  `{ "status": "SETTLED", "reference": "…" }`; settled rows show the reference.
+  ISSUED calls expose **Create payment**, a
+  `/payment?new=1&sourceType=CONTRACT_CASH_CALL&sourceId=…&sourceReference=…&amount=…&currency=…&payeeName=…`
+  hand-off that uses the contract's resolved cedent as the payee when available.
+  The context note and settle dialog explain that the reference ties the call to
+  the treasury payment and that creating a payment does not settle the call.
+  Playwright coverage adds required-reference validation, the exact SETTLED
+  payload, settled-row reference display, and the ISSUED-only link and query
+  parameters.
 - **Bordereaux** tab: lists the selected contract's cedent period submissions
   newest period first with bordereau number, period, received date, line count,
   premium, loss, commission, status, linked technical account, and action. A

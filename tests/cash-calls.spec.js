@@ -9,6 +9,7 @@ const contract = {
   contractNumber: 'XOL-2026-00091',
   contractType: 'EXCESS_OF_LOSS',
   cedentPartyId: '33333333-3333-7333-8333-333333333333',
+  cedentDisplayName: 'Meridian Manufacturing',
   reinsurerPartyId: '44444444-4444-7444-8444-444444444444',
   status: 'BOUND',
   effectiveDate: '2026-01-01',
@@ -143,6 +144,9 @@ async function mockContractApi(page, state) {
       const row = state.cashCalls.find((candidate) => candidate.cashCallId === statusMatch[2]);
       if (row) {
         row.status = body.status;
+        if (body.reference !== undefined) {
+          row.reference = body.reference;
+        }
       }
       await json(route, 200, row || {});
       return;
@@ -198,6 +202,7 @@ test('lists cash calls newest period first with counts, amounts, overdue due dat
     amount: '400000.0000',
     dueDate: '2000-01-01',
     status: 'SETTLED',
+    reference: 'TREAS-2026-00040',
     notes: 'Settled in Q1'
   });
   const q1Cancelled = cashCall({
@@ -239,6 +244,7 @@ test('lists cash calls newest period first with counts, amounts, overdue due dat
   await expect(rows.nth(0).getByTestId('cash-call-due-date')).toHaveText('2000-01-01');
   await expect(rows.nth(0).getByTestId('cash-call-status')).toHaveText('SETTLED');
   await expect(rows.nth(0).getByTestId('cash-call-status')).toHaveClass(/green/);
+  await expect(rows.nth(0).getByTestId('cash-call-reference')).toHaveText('TREAS-2026-00040');
   await expect(rows.nth(0).getByTestId('cash-call-notes')).toHaveText('Settled in Q1');
   await expect(rows.nth(0).getByTestId('cash-call-action')).toHaveText('—');
 
@@ -246,7 +252,9 @@ test('lists cash calls newest period first with counts, amounts, overdue due dat
   await expect(rows.nth(1).getByTestId('cash-call-due-date')).toHaveText('2999-12-31');
   await expect(rows.nth(1).getByTestId('cash-call-status')).toHaveText('ISSUED');
   await expect(rows.nth(1).getByTestId('cash-call-status')).toHaveClass(/blue/);
+  await expect(rows.nth(1).getByTestId('cash-call-reference')).toHaveText('—');
   await expect(rows.nth(1).getByRole('button', { name: 'Settle' })).toBeVisible();
+  await expect(rows.nth(1).getByTestId('cash-call-create-payment')).toBeVisible();
 
   await expect(rows.nth(2).getByTestId('cash-call-number')).toHaveText('CC-2026-00020');
   await expect(rows.nth(2).getByTestId('cash-call-notes')).toHaveText('—');
@@ -257,6 +265,7 @@ test('lists cash calls newest period first with counts, amounts, overdue due dat
   await expect(rows.nth(3).getByTestId('cash-call-status')).toHaveClass(/amber/);
   await expect(rows.nth(3).getByRole('button', { name: 'Issue' })).toBeVisible();
   await expect(rows.nth(3).getByRole('button', { name: 'Cancel' })).toBeVisible();
+  await expect(rows.nth(3).getByTestId('cash-call-create-payment')).toHaveCount(0);
 
   await expect(rows.nth(4).getByTestId('cash-call-number')).toHaveText('CC-2026-00005');
   await expect(rows.nth(4).getByTestId('cash-call-status')).toHaveText('CANCELLED');
@@ -276,6 +285,65 @@ test('lists cash calls newest period first with counts, amounts, overdue due dat
   await expect(note).toContainText('It is not a Payment');
   await expect(note).toContainText('Payment and FS-RI own execution');
   await expect(note).toContainText('never changes the contract record');
+  await expect(note).toContainText('settlement reference that ties the call to the treasury payment');
+  await expect(note).toContainText('Creating a payment does not settle the call');
+});
+
+test('links an ISSUED cash call to the Payment hand-off with its source, amount, currency, and payee', async ({ page }) => {
+  const issued = cashCall({
+    cashCallId: 'cc-60',
+    callNumber: 'CC-2026-00060',
+    amount: '750000.5000',
+    currency: 'USD',
+    status: 'ISSUED',
+    notes: 'Funding for the large loss'
+  });
+  const requested = cashCall({
+    cashCallId: 'cc-70',
+    callNumber: 'CC-2026-00070',
+    amount: '250000.0000',
+    status: 'REQUESTED'
+  });
+  const settled = cashCall({
+    cashCallId: 'cc-80',
+    callNumber: 'CC-2026-00080',
+    amount: '125000.0000',
+    status: 'SETTLED',
+    reference: 'TREAS-2026-00080'
+  });
+  const state = emptyState([issued, requested, settled]);
+  await mockContractApi(page, state);
+
+  await openCashCalls(page);
+  const issuedRow = page.getByTestId('cash-call-row').filter({ hasText: 'CC-2026-00060' });
+  const link = issuedRow.getByTestId('cash-call-create-payment');
+  await expect(link).toHaveText('Create payment');
+
+  // The hand-off carries the same template Payment consumes for other sources.
+  const href = await link.getAttribute('href');
+  expect(href).toBe(
+    '/payment?new=1&sourceType=CONTRACT_CASH_CALL&sourceId=cc-60'
+    + '&sourceReference=CC-2026-00060&amount=750000.5000&currency=USD'
+    + '&payeeName=Meridian+Manufacturing'
+  );
+  const url = new URL(href, 'http://localhost:3003');
+  expect(url.pathname).toBe('/payment');
+  expect(url.searchParams.get('new')).toBe('1');
+  expect(url.searchParams.get('sourceType')).toBe('CONTRACT_CASH_CALL');
+  expect(url.searchParams.get('sourceId')).toBe('cc-60');
+  expect(url.searchParams.get('sourceReference')).toBe('CC-2026-00060');
+  expect(url.searchParams.get('amount')).toBe('750000.5000');
+  expect(url.searchParams.get('currency')).toBe('USD');
+  expect(url.searchParams.get('payeeName')).toBe('Meridian Manufacturing');
+
+  // Only ISSUED calls open a Payment hand-off: requested and settled rows do not.
+  const requestedRow = page.getByTestId('cash-call-row').filter({ hasText: 'CC-2026-00070' });
+  await expect(requestedRow.getByTestId('cash-call-create-payment')).toHaveCount(0);
+  const settledRow = page.getByTestId('cash-call-row').filter({ hasText: 'CC-2026-00080' });
+  await expect(settledRow.getByTestId('cash-call-create-payment')).toHaveCount(0);
+
+  // Creating a Payment is not a settlement and sends no cash-call command.
+  expect(state.patches).toHaveLength(0);
 });
 
 test('creates a cash call with the period, positive amount, currency, due date, and notes', async ({ page }) => {
@@ -352,7 +420,7 @@ test('creates a cash call with the period, positive amount, currency, due date, 
   await expect(page.getByLabel('Notes')).toHaveValue('');
 });
 
-test('issues and settles a cash call only after confirmation', async ({ page }) => {
+test('issues a cash call after confirmation and settles it with a required reference', async ({ page }) => {
   const requested = cashCall({
     cashCallId: 'cc-30',
     callNumber: 'CC-2026-00030',
@@ -403,6 +471,7 @@ test('issues and settles a cash call only after confirmation', async ({ page }) 
   await expect(row.getByRole('button', { name: 'Settle' })).toBeVisible();
   await expect(row.getByRole('button', { name: 'Issue' })).toHaveCount(0);
   await expect(row.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
+  await expect(page.getByTestId('cash-call-create-payment')).toBeVisible();
   await expect(page.getByTestId('cash-call-message')).toHaveText(
     'Cash call CC-2026-00030 issued.'
   );
@@ -410,17 +479,54 @@ test('issues and settles a cash call only after confirmation', async ({ page }) 
   await expect(page.getByTestId('cash-call-summary-issued')).toHaveText('1');
   await expect(page.getByTestId('cash-call-summary-issued-amount')).toHaveText('$1,200,000.00');
 
+  // Settling opens a reference dialog instead of a bare browser confirmation.
   await row.getByRole('button', { name: 'Settle' }).click();
+  const dialog = page.getByTestId('cash-call-settle-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Settle cash call CC-2026-00030');
+  await expect(dialog).toContainText('2026-07-01 → 2026-09-30');
+  await expect(dialog).toContainText('ties this cash call to the treasury payment');
+  await expect(dialog).toContainText('Creating a payment does not settle the call');
+  expect(state.patches).toHaveLength(1);
+
+  // The reference is required; a blank submit never reaches the service.
+  await dialog.getByRole('button', { name: 'Settle cash call' }).click();
+  await expect(page.getByTestId('cash-call-settle-error')).toHaveText(
+    'Settlement reference is required.'
+  );
+  expect(state.patches).toHaveLength(1);
+
+  // Whitespace is not a reference either.
+  await page.getByTestId('cash-call-settlement-reference').fill('   ');
+  await dialog.getByRole('button', { name: 'Settle cash call' }).click();
+  await expect(page.getByTestId('cash-call-settle-error')).toHaveText(
+    'Settlement reference is required.'
+  );
+  expect(state.patches).toHaveLength(1);
+
+  // Closing the dialog is not a settlement either.
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.patches).toHaveLength(1);
+  await expect(row.getByTestId('cash-call-status')).toHaveText('ISSUED');
+
+  await row.getByRole('button', { name: 'Settle' }).click();
+  await page.getByTestId('cash-call-settlement-reference').fill('  TREAS-2026-00030  ');
+  await page.getByRole('button', { name: 'Settle cash call' }).click();
+
   await expect.poll(() => state.patches.length).toBe(2);
   expect(state.patches[1]).toEqual({
     path: `/api/v1/contracts/${CONTRACT_ID}/cash-calls/cc-30/status`,
-    body: { status: 'SETTLED' },
+    body: { status: 'SETTLED', reference: 'TREAS-2026-00030' },
     tenant: TENANT,
     cashCallId: 'cc-30'
   });
+  await expect(page.getByTestId('cash-call-settle-dialog')).toHaveCount(0);
   await expect(row.getByTestId('cash-call-status')).toHaveText('SETTLED');
   await expect(row.getByTestId('cash-call-status')).toHaveClass(/green/);
+  await expect(row.getByTestId('cash-call-reference')).toHaveText('TREAS-2026-00030');
   await expect(row.getByTestId('cash-call-action')).toHaveText('—');
+  await expect(page.getByTestId('cash-call-create-payment')).toHaveCount(0);
   await expect(page.getByTestId('cash-call-message')).toHaveText(
     'Cash call CC-2026-00030 settled.'
   );
@@ -428,12 +534,11 @@ test('issues and settles a cash call only after confirmation', async ({ page }) 
   await expect(page.getByTestId('cash-call-summary-issued-amount')).toHaveText('—');
   await expect(page.getByTestId('cash-call-summary-settled-amount')).toHaveText('$1,200,000.00');
 
-  expect(dialogs).toHaveLength(2);
+  // Only Issue asked for a browser confirmation; settle used the dialog.
+  expect(dialogs).toHaveLength(1);
   expect(dialogs[0]).toContain('Issue cash call CC-2026-00030 for 2026-07-01 → 2026-09-30');
   expect(dialogs[0]).toContain('not a Payment');
   expect(dialogs[0]).toContain('Payment and FS-RI own execution');
-  expect(dialogs[1]).toContain('Settle cash call CC-2026-00030 for 2026-07-01 → 2026-09-30');
-  expect(dialogs[1]).toContain('Payment and FS-RI own execution');
 });
 
 test('cancels a requested cash call only after confirmation', async ({ page }) => {

@@ -583,6 +583,11 @@ export default function App() {
   const bound = Boolean(selected && BOUND_STATUSES.has(selected.status));
   const cedentLabel = resolvedPartyLabel(partyLookup, cedentPartyId);
   const reinsurerLabel = resolvedPartyLabel(partyLookup, reinsurerPartyId);
+  // The cash-call Payment hand-off prefills the payee with the cedent the
+  // contract already resolves, without requiring a second party lookup.
+  const cashCallPayeeName = selected
+    ? selected.cedentDisplayName || partyLookup[cedentPartyId] || ''
+    : '';
 
   const currency = (selected && selected.currency) || 'USD';
   const towerLimit = sumBy(summary.layers, (layer) => layer.limitAmount);
@@ -1266,6 +1271,7 @@ export default function App() {
                 <CashCallsPanel
                   contractId={selectedId}
                   currency={currency}
+                  payeeName={cashCallPayeeName}
                   onChanged={refresh}
                 />
               )}

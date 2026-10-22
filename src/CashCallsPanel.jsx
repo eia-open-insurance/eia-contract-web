@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch, errorMessage } from './api';
+import { navigate } from './navigation';
 import {
   CASH_CALL_STATUS,
+  SETTLEMENT_REFERENCE_MAX_LENGTH,
   buildCreatePayload,
   cashCallActions,
   cashCallAmount,
@@ -9,7 +11,9 @@ import {
   cashCallDueDate,
   cashCallNotes,
   cashCallNumber,
+  cashCallPaymentHref,
   cashCallRowId,
+  cashCallSettlementReference,
   cashCallStatus,
   cashCallStatusEndpoint,
   cashCallsEndpoint,
@@ -20,7 +24,8 @@ import {
   statusPayload,
   statusTone,
   summarizeCashCalls,
-  validateCreateForm
+  validateCreateForm,
+  validateSettleForm
 } from './cashCalls';
 
 function initialForm(currency) {
@@ -43,7 +48,98 @@ function confirmationFor(row, action) {
   if (action.status === CASH_CALL_STATUS.CANCELLED) {
     return `Cancel cash call ${number} for ${period}?\n\nCancelling withdraws the funding request before it is issued. It is not a Payment; Payment and FS-RI own execution.`;
   }
-  return `Settle cash call ${number} for ${period}?\n\nSettling records the issued funding request as settled. It is not a Payment; Payment and FS-RI own execution.`;
+  return `Update cash call ${number} for ${period}?\n\nThis changes the funding request only. It is not a Payment; Payment and FS-RI own execution.`;
+}
+
+/**
+ * Settlement asks for the treasury/payment reference instead of a bare
+ * confirmation: the reference is what ties the settled call to the Payment
+ * record. The dialog is deliberately local to the tab so a failed PATCH leaves
+ * the contract record usable.
+ */
+function SettleDialog({
+  row,
+  reference,
+  error,
+  busy,
+  onChange,
+  onClose,
+  onSubmit
+}) {
+  const number = cashCallNumber(row) || 'cash call';
+  const currency = cashCallCurrency(row);
+  return (
+    <div
+      className="eia-modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) {
+          onClose();
+        }
+      }}
+    >
+      <section
+        className="eia-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cash-call-settle-title"
+        data-testid="cash-call-settle-dialog"
+      >
+        <h2 id="cash-call-settle-title">Settle cash call {number}</h2>
+        <p className="eia-modal-lede">
+          {formatPeriod(row)} · {formatAmount(cashCallAmount(row), currency)}
+        </p>
+        <p className="eia-muted eia-modal-context">
+          The settlement reference ties this cash call to the treasury payment in
+          Payment. Creating a payment does not settle the call; settle it here
+          with the payment or settlement reference.
+        </p>
+        <form onSubmit={onSubmit} noValidate>
+          <div className="eia-field">
+            <label htmlFor="cash-call-settlement-reference">Settlement reference</label>
+            <input
+              id="cash-call-settlement-reference"
+              value={reference}
+              onChange={(event) => onChange(event.target.value)}
+              maxLength={SETTLEMENT_REFERENCE_MAX_LENGTH}
+              placeholder="Payment number, treasury reference, or bank reference"
+              autoFocus
+              required
+              aria-required="true"
+              aria-describedby="cash-call-settlement-reference-hint"
+              data-testid="cash-call-settlement-reference"
+            />
+            <span id="cash-call-settlement-reference-hint" className="eia-muted">
+              Required. Use the reference recorded against the Payment that settles
+              this funding request.
+            </span>
+          </div>
+          {error && (
+            <p role="alert" className="eia-modal-error" data-testid="cash-call-settle-error">
+              {error}
+            </p>
+          )}
+          <div className="eia-modal-actions">
+            <button
+              type="button"
+              className="eia-btn-secondary"
+              onClick={onClose}
+              disabled={busy}
+              data-testid="cash-call-settle-close"
+            >
+              Close
+            </button>
+            <button type="submit" disabled={busy} data-testid="cash-call-settle-submit">
+              {busy ? 'Settling…' : 'Settle cash call'}
+            </button>
+          </div>
+        </form>
+        <p className="eia-modal-footnote">
+          Settling changes only this cash call. Payment owns approval and execution,
+          and recording the reference does not create or execute a Payment.
+        </p>
+      </section>
+    </div>
+  );
 }
 
 /**
@@ -54,7 +150,12 @@ function confirmationFor(row, action) {
  * Every failure stays inside this panel so the contract record always remains
  * usable.
  */
-export default function CashCallsPanel({ contractId, currency = 'USD', onChanged }) {
+export default function CashCallsPanel({
+  contractId,
+  currency = 'USD',
+  payeeName = '',
+  onChanged
+}) {
   const [cashCalls, setCashCalls] = useState([]);
   const [form, setForm] = useState(() => initialForm(currency));
   const [loading, setLoading] = useState(Boolean(contractId));
@@ -63,6 +164,13 @@ export default function CashCallsPanel({ contractId, currency = 'USD', onChanged
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [message, setMessage] = useState('');
+  const [settleTarget, setSettleTarget] = useState(null);
+  const [settleReference, setSettleReference] = useState('');
+  const [settleError, setSettleError] = useState('');
+  const [settleBusy, setSettleBusy] = useState(false);
+  // A successful settle response may not echo the reference yet; keep the
+  // submitted one locally so the row can show what was recorded.
+  const [settledReferences, setSettledReferences] = useState({});
 
   async function load() {
     if (!contractId) {
@@ -89,8 +197,25 @@ export default function CashCallsPanel({ contractId, currency = 'USD', onChanged
     setForm(initialForm(currency));
     setMessage('');
     setActionError('');
+    setSettleTarget(null);
+    setSettleReference('');
+    setSettleError('');
+    setSettledReferences({});
     load();
   }, [contractId, currency]);
+
+  useEffect(() => {
+    if (!settleTarget) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape' && !settleBusy) {
+        setSettleTarget(null);
+        setSettleReference('');
+        setSettleError('');
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [settleTarget, settleBusy]);
 
   function update(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -126,7 +251,67 @@ export default function CashCallsPanel({ contractId, currency = 'USD', onChanged
     }
   }
 
+  function openSettle(row) {
+    setMessage('');
+    setActionError('');
+    setSettleError('');
+    setSettleReference(cashCallSettlementReference(row));
+    setSettleTarget(row);
+  }
+
+  function closeSettle() {
+    if (settleBusy) return;
+    setSettleTarget(null);
+    setSettleReference('');
+    setSettleError('');
+  }
+
+  async function submitSettlement(event) {
+    event.preventDefault();
+    const issues = validateSettleForm({ reference: settleReference });
+    if (issues.length > 0) {
+      setSettleError(issues.join(' '));
+      return;
+    }
+    const row = settleTarget;
+    const id = cashCallRowId(row);
+    const reference = settleReference.trim();
+    setSettleBusy(true);
+    setSettleError('');
+    setMessage('');
+    setActionError('');
+    try {
+      await apiFetch(cashCallStatusEndpoint(contractId, id), {
+        method: 'PATCH',
+        body: JSON.stringify(statusPayload(CASH_CALL_STATUS.SETTLED, reference))
+      });
+      setSettledReferences((current) => ({ ...current, [id]: reference }));
+      setSettleTarget(null);
+      setSettleReference('');
+      setMessage(`Cash call ${cashCallNumber(row) || 'record'} settled.`);
+      await load();
+      if (onChanged) {
+        onChanged();
+      }
+    } catch (error) {
+      const text = errorMessage(error);
+      if (error.status === 409) {
+        setSettleTarget(null);
+        setActionError(text);
+        await load();
+      } else {
+        setSettleError(text);
+      }
+    } finally {
+      setSettleBusy(false);
+    }
+  }
+
   async function applyAction(row, action) {
+    if (action.status === CASH_CALL_STATUS.SETTLED) {
+      openSettle(row);
+      return;
+    }
     if (!window.confirm(confirmationFor(row, action))) {
       return;
     }
@@ -245,6 +430,11 @@ export default function CashCallsPanel({ contractId, currency = 'USD', onChanged
           period. It is not a Payment: Payment and FS-RI own execution. Issuing,
           settling, or cancelling a cash call never changes the contract record.
         </p>
+        <p>
+          Settling asks for the payment/settlement reference that ties the call to
+          the treasury payment. Creating a payment does not settle the call; issue
+          the Payment first, then settle the call with its reference.
+        </p>
       </div>
 
       <form
@@ -338,6 +528,7 @@ export default function CashCallsPanel({ contractId, currency = 'USD', onChanged
               <th>Amount / currency</th>
               <th>Due date</th>
               <th>Status</th>
+              <th>Settlement reference</th>
               <th>Notes</th>
               <th>Action</th>
             </tr>
@@ -348,6 +539,10 @@ export default function CashCallsPanel({ contractId, currency = 'USD', onChanged
               const status = cashCallStatus(row);
               const rowCurrency = cashCallCurrency(row) || currency;
               const actions = cashCallActions(row);
+              const reference = cashCallSettlementReference(row) || settledReferences[id] || '';
+              const paymentHref = status === CASH_CALL_STATUS.ISSUED
+                ? cashCallPaymentHref(row, payeeName, rowCurrency)
+                : '';
               return (
                 <tr key={id || cashCallNumber(row)} data-testid="cash-call-row">
                   <td className="eia-mono" data-testid="cash-call-number">
@@ -366,10 +561,31 @@ export default function CashCallsPanel({ contractId, currency = 'USD', onChanged
                       {status || '—'}
                     </span>
                   </td>
+                  <td
+                    className="eia-mono"
+                    data-testid="cash-call-reference"
+                    title={reference || undefined}
+                  >
+                    {reference || '—'}
+                  </td>
                   <td data-testid="cash-call-notes">{cashCallNotes(row) || '—'}</td>
                   <td data-testid="cash-call-action">
-                    {actions.length > 0 ? (
-                      <span style={{ display: 'flex', gap: 6 }}>
+                    {actions.length > 0 || paymentHref ? (
+                      <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        {paymentHref && (
+                          <a
+                            className="cash-call-payment-link"
+                            href={paymentHref}
+                            data-testid="cash-call-create-payment"
+                            title="Create a Payment from this cash call"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              navigate(paymentHref);
+                            }}
+                          >
+                            Create payment
+                          </a>
+                        )}
                         {actions.map((action) => (
                           <button
                             key={action.status}
@@ -394,14 +610,14 @@ export default function CashCallsPanel({ contractId, currency = 'USD', onChanged
             })}
             {loading && (
               <tr>
-                <td className="eia-muted" colSpan={7} data-testid="cash-call-loading">
+                <td className="eia-muted" colSpan={8} data-testid="cash-call-loading">
                   Loading cash calls…
                 </td>
               </tr>
             )}
             {!loading && !loadError && sorted.length === 0 && (
               <tr>
-                <td className="eia-muted" colSpan={7} data-testid="cash-call-empty">
+                <td className="eia-muted" colSpan={8} data-testid="cash-call-empty">
                   No cash calls yet for this contract.
                 </td>
               </tr>
@@ -409,6 +625,18 @@ export default function CashCallsPanel({ contractId, currency = 'USD', onChanged
           </tbody>
         </table>
       </div>
+
+      {settleTarget && (
+        <SettleDialog
+          row={settleTarget}
+          reference={settleReference}
+          error={settleError}
+          busy={settleBusy}
+          onChange={setSettleReference}
+          onClose={closeSettle}
+          onSubmit={submitSettlement}
+        />
+      )}
     </section>
   );
 }

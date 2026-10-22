@@ -8,6 +8,10 @@
  * The expert owns call-number generation, the lifecycle invariants, and the
  * stored amount, so this module just owns the wire shape the workbench sends and
  * the small amount of arithmetic the summary cards need.
+ *
+ * Settlement is a bookkeeping act, not a payment execution. Settling an ISSUED
+ * call records the payment/settlement reference that ties the call to the
+ * treasury Payment; creating a Payment never settles the call on its own.
  */
 
 /** Four decimal places, matching the domain's numeric(19,4) money columns. */
@@ -20,6 +24,15 @@ const PERIOD_TO_KEYS = ['periodEnd', 'periodTo'];
 const AMOUNT_KEYS = ['amount', 'callAmount'];
 const DUE_DATE_KEYS = ['dueDate', 'due'];
 const NOTES_KEYS = ['notes', 'note'];
+const SETTLEMENT_REFERENCE_KEYS = [
+  'reference',
+  'settlementReference',
+  'settlementRef',
+  'paymentReference'
+];
+
+/** The settlement reference is bounded so a pasted line cannot become a payload. */
+export const SETTLEMENT_REFERENCE_MAX_LENGTH = 128;
 
 export const CASH_CALL_STATUS = {
   REQUESTED: 'REQUESTED',
@@ -92,6 +105,16 @@ export function cashCallStatus(row) {
 
 export function cashCallNotes(row) {
   const value = pick(row, NOTES_KEYS);
+  return value === undefined ? '' : String(value);
+}
+
+/**
+ * The treasury/payment reference recorded when the call is settled. The expert
+ * returns it as `reference`; the aliases keep the panel tolerant of the older
+ * settlement vocabulary without inventing a second field on the wire.
+ */
+export function cashCallSettlementReference(row) {
+  const value = pick(row, SETTLEMENT_REFERENCE_KEYS);
   return value === undefined ? '' : String(value);
 }
 
@@ -192,8 +215,59 @@ export function cashCallActions(row) {
   return [];
 }
 
-export function statusPayload(status) {
-  return { status };
+/**
+ * Status payload for PATCH .../status. Issue and cancel send only the target
+ * status; settle also carries the required payment/settlement reference that
+ * ties the call to the treasury Payment.
+ */
+export function statusPayload(status, reference) {
+  const payload = { status };
+  if (status === CASH_CALL_STATUS.SETTLED) {
+    payload.reference = String(reference || '').trim();
+  }
+  return payload;
+}
+
+/**
+ * Cross-remote hand-off into the Payment workbench. Contract never creates the
+ * Payment: the URL carries the source cash call, amount, currency, and payee so
+ * Payment can confirm them and save its own record.
+ *
+ * The link is only meaningful for an ISSUED call: a REQUESTED call has not been
+ * approved for funding, and a SETTLED call already has its treasury reference.
+ */
+export function cashCallPaymentHref(row, payeeName, fallbackCurrency) {
+  const sourceId = cashCallRowId(row);
+  if (!sourceId) {
+    return '';
+  }
+  const params = new URLSearchParams();
+  params.set('new', '1');
+  params.set('sourceType', 'CONTRACT_CASH_CALL');
+  params.set('sourceId', sourceId);
+  params.set('sourceReference', cashCallNumber(row));
+  const amount = cashCallAmount(row);
+  params.set('amount', amount === undefined || amount === null ? '' : String(amount));
+  params.set('currency', cashCallCurrency(row) || fallbackCurrency || 'USD');
+  const payee = String(payeeName || '').trim();
+  if (payee) {
+    params.set('payeeName', payee);
+  }
+  return `/payment?${params.toString()}`;
+}
+
+/** Settle form validation: the reference is required and bounded. */
+export function validateSettleForm(form) {
+  const reference = String(form?.reference || '').trim();
+  if (!reference) {
+    return ['Settlement reference is required.'];
+  }
+  if (reference.length > SETTLEMENT_REFERENCE_MAX_LENGTH) {
+    return [
+      `Settlement reference must be ${SETTLEMENT_REFERENCE_MAX_LENGTH} characters or fewer.`
+    ];
+  }
+  return [];
 }
 
 function isValidDate(value) {

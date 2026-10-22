@@ -224,3 +224,142 @@
   font-weight: 700;
   text-transform: capitalize;
 }
+
+/* Cash-call settlement asks for a reference in a modal rather than a browser
+   confirm. These are the canonical shell dialog primitives, copied locally
+   because this remote's ui.css predates them. */
+.eia-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+  overflow-y: auto;
+  background: rgba(11, 46, 79, .55);
+}
+
+.eia-modal {
+  width: min(560px, 100%);
+  padding: 20px 22px 22px;
+  background: #fff;
+  border: 1px solid var(--eia-line);
+  border-radius: 10px;
+  box-shadow: 0 24px 60px rgba(8, 28, 48, .28);
+}
+
+.eia-modal h2 {
+  margin: 0 !important;
+  font-size: 19px !important;
+  color: var(--eia-navy);
+}
+
+.eia-modal .eia-form-grid { align-items: start; }
+
+/* Field hints inside the dialog should read as helper text, not body copy. */
+.eia-modal .eia-field .eia-muted {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.eia-modal-lede {
+  margin: 6px 0 0;
+  color: var(--eia-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.eia-modal-context { margin: 8px 0 14px; font-size: 11px; }
+
+.eia-modal input,
+.eia-modal select,
+.eia-modal textarea {
+  width: 100%;
+  background: #fff;
+  color: var(--eia-ink);
+  border: 1px solid #c9d4df;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  min-height: 34px;
+}
+
+.eia-modal input:focus,
+.eia-modal select:focus,
+.eia-modal textarea:focus {
+  outline: 2px solid #b9d3ea;
+  border-color: var(--eia-blue);
+}
+
+.eia-modal button {
+  background: var(--eia-blue);
+  color: #fff;
+  border: 1px solid var(--eia-blue);
+  border-radius: 6px;
+  padding: 8px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.eia-modal button:hover { background: var(--eia-blue-dark); }
+.eia-modal button:disabled { opacity: .5; cursor: not-allowed; }
+
+.eia-modal .eia-btn-secondary {
+  background: #fff !important;
+  color: var(--eia-blue) !important;
+  border: 1px solid #b9cde0 !important;
+}
+
+.eia-modal .eia-btn-secondary:hover { background: #f2f7fb !important; }
+
+.eia-modal-error {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border: 1px solid #e6bcbc;
+  border-radius: 5px;
+  background: #fff6f6;
+  color: var(--eia-red);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.eia-modal-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.eia-modal-footnote {
+  margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid #e8eef4;
+  color: var(--eia-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+@media (max-width: 700px) {
+  .eia-modal-backdrop { padding: 16px 10px; }
+  .eia-modal { padding: 16px; }
+  .eia-modal-actions { justify-content: flex-start; }
+}
+
+/* Two paragraphs in the cash-call context note need separation; the shared
+   panel style removes all paragraph margins. */
+.eia-context-panel p + p { margin-top: 7px; }
+
+/* The Payment hand-off is a cross-remote link, styled as a table action. */
+.eia-table a.cash-call-payment-link {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--eia-blue);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.eia-table a.cash-call-payment-link:hover { text-decoration: underline; }
