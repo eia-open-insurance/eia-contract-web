@@ -225,9 +225,26 @@
   text-transform: capitalize;
 }
 
-/* Cash-call settlement asks for a reference in a modal rather than a browser
-   confirm. These are the canonical shell dialog primitives, copied locally
-   because this remote's ui.css predates them. */
+/* A settled statement shows the reference recorded at settlement above its
+   immutable lines, tying the statement to the treasury settlement. */
+.technical-account-settlement-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 5px;
+  margin: 14px 18px 0;
+  padding: 9px 11px;
+  border: 1px solid #cfe3d2;
+  border-left: 3px solid var(--eia-green);
+  border-radius: 5px;
+  background: #f4faf5;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* Settlement dialogs ask for a reference rather than a browser confirm. These
+   are the canonical shell dialog primitives, copied locally because this
+   remote's ui.css predates them. */
 .eia-modal-backdrop {
   position: fixed;
   inset: 0;

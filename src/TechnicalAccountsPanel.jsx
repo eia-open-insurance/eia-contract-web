@@ -9,19 +9,23 @@ import {
   accountCurrency,
   accountId,
   accountNumber,
+  accountSettlementReference,
   accountStatus,
   balancePreview,
   buildCreatePayload,
   formatAmount,
   formatPeriod,
   nextAction,
+  SETTLEMENT_REFERENCE_MAX_LENGTH,
   sortTechnicalAccounts,
   statusPayload,
   statusTone,
   summarizeTechnicalAccounts,
+  TECHNICAL_ACCOUNT_STATUS,
   technicalAccountStatusEndpoint,
   technicalAccountsEndpoint,
-  validateCreateForm
+  validateCreateForm,
+  validateSettleForm
 } from './technicalAccounts';
 
 function initialForm(currency) {
@@ -46,21 +50,110 @@ function previewDirection(value) {
     : 'Balance due to the cedent.';
 }
 
-function confirmationFor(row, action) {
+function issueConfirmation(row) {
   const number = accountNumber(row) || 'this technical account';
   const period = formatPeriod(row);
-  if (action.status === 'ISSUED') {
-    return `Issue technical account ${number} for ${period}?\n\nIssuing makes the period statement available for settlement. The contract remains the source of its terms.`;
-  }
-  return `Settle technical account ${number} for ${period}?\n\nSettling records the period balance as settled. FS-RI and SAP own the posted amounts.`;
+  return `Issue technical account ${number} for ${period}?\n\nIssuing makes the period statement available for settlement. The contract remains the source of its terms.`;
+}
+
+/**
+ * Settlement asks for the treasury/payment reference instead of a bare
+ * confirmation: the reference is what ties the settled statement to the
+ * treasury settlement record. The dialog is deliberately local to the tab so a
+ * failed PATCH leaves the contract record usable.
+ */
+function SettleDialog({
+  row,
+  reference,
+  error,
+  busy,
+  onChange,
+  onClose,
+  onSubmit
+}) {
+  const number = accountNumber(row) || 'technical account';
+  const currency = accountCurrency(row) || 'USD';
+  return (
+    <div
+      className="eia-modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) {
+          onClose();
+        }
+      }}
+    >
+      <section
+        className="eia-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="technical-account-settle-title"
+        data-testid="technical-account-settle-dialog"
+      >
+        <h2 id="technical-account-settle-title">Settle technical account {number}</h2>
+        <p className="eia-modal-lede">
+          {formatPeriod(row)} · {formatAmount(accountBalance(row), currency)}
+        </p>
+        <p className="eia-muted eia-modal-context">
+          The settlement reference ties this period statement to the treasury
+          settlement recorded in Payment. Settling records the statement as settled;
+          it does not create or execute a Payment.
+        </p>
+        <form onSubmit={onSubmit} noValidate>
+          <div className="eia-field">
+            <label htmlFor="technical-account-settlement-reference">Settlement reference</label>
+            <input
+              id="technical-account-settlement-reference"
+              value={reference}
+              onChange={(event) => onChange(event.target.value)}
+              maxLength={SETTLEMENT_REFERENCE_MAX_LENGTH}
+              placeholder="Payment number, treasury reference, or bank reference"
+              autoFocus
+              required
+              aria-required="true"
+              aria-describedby="technical-account-settlement-reference-hint"
+              data-testid="technical-account-settle-reference"
+            />
+            <span id="technical-account-settlement-reference-hint" className="eia-muted">
+              Required. Use the reference recorded against the treasury settlement
+              that pays this statement.
+            </span>
+          </div>
+          {error && (
+            <p role="alert" className="eia-modal-error" data-testid="technical-account-settle-error">
+              {error}
+            </p>
+          )}
+          <div className="eia-modal-actions">
+            <button
+              type="button"
+              className="eia-btn-secondary"
+              onClick={onClose}
+              disabled={busy}
+              data-testid="technical-account-settle-close"
+            >
+              Close
+            </button>
+            <button type="submit" disabled={busy} data-testid="technical-account-settle-submit">
+              {busy ? 'Settling…' : 'Settle technical account'}
+            </button>
+          </div>
+        </form>
+        <p className="eia-modal-footnote">
+          Settling changes only this technical account. FS-RI and SAP own the posted
+          amounts, and recording the reference does not create or execute a Payment.
+        </p>
+      </section>
+    </div>
+  );
 }
 
 /**
  * Technical accounts tab: period statements for the selected contract.
  *
  * The contract provides the terms; a statement reports the ceded premium,
- * ceded losses, commission, and other charges for one period. Issuing and
- * settling are confirmed commands, and every failure stays inside this panel so
+ * ceded losses, commission, and other charges for one period. Issue asks for
+ * confirmation; settling opens a reference-required dialog so the statement can
+ * be tied to its treasury settlement. Every failure stays inside this panel so
  * the contract record always remains usable.
  */
 export default function TechnicalAccountsPanel({ contractId, currency = 'USD', onChanged }) {
@@ -74,6 +167,13 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
   const [message, setMessage] = useState('');
   const [expandedId, setExpandedId] = useState('');
   const [reconcileErrors, setReconcileErrors] = useState({});
+  const [settleTarget, setSettleTarget] = useState(null);
+  const [settleReference, setSettleReference] = useState('');
+  const [settleError, setSettleError] = useState('');
+  const [settleBusy, setSettleBusy] = useState(false);
+  // A successful settle response may not echo the reference yet; keep the
+  // submitted one locally so the row can show what was recorded.
+  const [settledReferences, setSettledReferences] = useState({});
 
   async function load() {
     if (!contractId) {
@@ -102,8 +202,25 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
     setActionError('');
     setExpandedId('');
     setReconcileErrors({});
+    setSettleTarget(null);
+    setSettleReference('');
+    setSettleError('');
+    setSettledReferences({});
     load();
   }, [contractId, currency]);
+
+  useEffect(() => {
+    if (!settleTarget) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape' && !settleBusy) {
+        setSettleTarget(null);
+        setSettleReference('');
+        setSettleError('');
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [settleTarget, settleBusy]);
 
   function toggleLines(row) {
     const id = accountId(row);
@@ -154,8 +271,68 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
     }
   }
 
+  function openSettle(row) {
+    setMessage('');
+    setActionError('');
+    setSettleError('');
+    setSettleReference(accountSettlementReference(row));
+    setSettleTarget(row);
+  }
+
+  function closeSettle() {
+    if (settleBusy) return;
+    setSettleTarget(null);
+    setSettleReference('');
+    setSettleError('');
+  }
+
+  async function submitSettlement(event) {
+    event.preventDefault();
+    const issues = validateSettleForm({ reference: settleReference });
+    if (issues.length > 0) {
+      setSettleError(issues.join(' '));
+      return;
+    }
+    const row = settleTarget;
+    const id = accountId(row);
+    const reference = settleReference.trim();
+    setSettleBusy(true);
+    setSettleError('');
+    setMessage('');
+    setActionError('');
+    try {
+      await apiFetch(technicalAccountStatusEndpoint(contractId, id), {
+        method: 'PATCH',
+        body: JSON.stringify(statusPayload(TECHNICAL_ACCOUNT_STATUS.SETTLED, reference))
+      });
+      setSettledReferences((current) => ({ ...current, [id]: reference }));
+      setSettleTarget(null);
+      setSettleReference('');
+      setMessage(`Technical account ${accountNumber(row) || 'record'} settled.`);
+      await load();
+      if (onChanged) {
+        onChanged();
+      }
+    } catch (error) {
+      const text = errorMessage(error);
+      if (error.status === 409) {
+        setSettleTarget(null);
+        setActionError(text);
+        await load();
+      } else {
+        setSettleError(text);
+      }
+    } finally {
+      setSettleBusy(false);
+    }
+  }
+
   async function applyAction(row, action) {
-    if (!window.confirm(confirmationFor(row, action))) {
+    if (action.status === TECHNICAL_ACCOUNT_STATUS.SETTLED) {
+      openSettle(row);
+      return;
+    }
+    if (!window.confirm(issueConfirmation(row))) {
       return;
     }
     const id = accountId(row);
@@ -306,6 +483,11 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
           amounts. A DRAFT statement's lines must reconcile to its header within 0.01 before issue,
           and an issued statement's lines are immutable.
         </p>
+        <p>
+          Settling a statement asks for the payment/settlement reference that ties it to the treasury
+          settlement. The reference is what matches the statement to the cash movement recorded in
+          Payment; recording it does not create or execute a Payment.
+        </p>
       </div>
 
       <form
@@ -431,6 +613,7 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
               <th>Commission</th>
               <th>Balance</th>
               <th>Status</th>
+              <th>Settlement reference</th>
               <th>Action</th>
             </tr>
           </thead>
@@ -441,6 +624,9 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
               const rowCurrency = accountCurrency(row) || currency;
               const id = accountId(row);
               const expanded = Boolean(id) && expandedId === id;
+              const settlementReference = status === TECHNICAL_ACCOUNT_STATUS.SETTLED
+                ? (accountSettlementReference(row) || settledReferences[id] || '')
+                : '';
               return (
                 <Fragment key={id || accountNumber(row)}>
                   <tr data-testid="technical-account-row">
@@ -480,6 +666,13 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
                         {status || '—'}
                       </span>
                     </td>
+                    <td
+                      className="eia-mono"
+                      data-testid="technical-account-settlement-reference"
+                      title={settlementReference || undefined}
+                    >
+                      {settlementReference || '—'}
+                    </td>
                     <td data-testid="technical-account-action">
                       {action ? (
                         <button
@@ -500,7 +693,21 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
                       className="eia-technical-account-expanded"
                       data-testid="technical-account-lines-row"
                     >
-                      <td colSpan={9} id={`technical-account-lines-${id}`}>
+                      <td colSpan={10} id={`technical-account-lines-${id}`}>
+                        {status === TECHNICAL_ACCOUNT_STATUS.SETTLED && (
+                          <div
+                            className="technical-account-settlement-detail"
+                            data-testid="technical-account-settlement-detail"
+                          >
+                            <span className="eia-muted">Settlement reference</span>
+                            {' '}
+                            <strong className="eia-mono">{settlementReference || '—'}</strong>
+                            {' '}
+                            <span className="eia-muted">
+                              ties this statement to the treasury settlement recorded in Payment.
+                            </span>
+                          </div>
+                        )}
                         <TechnicalAccountLines
                           contractId={contractId}
                           account={row}
@@ -517,14 +724,14 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
             })}
             {loading && (
               <tr>
-                <td className="eia-muted" colSpan={9} data-testid="technical-account-loading">
+                <td className="eia-muted" colSpan={10} data-testid="technical-account-loading">
                   Loading technical accounts…
                 </td>
               </tr>
             )}
             {!loading && !loadError && sorted.length === 0 && (
               <tr>
-                <td className="eia-muted" colSpan={9} data-testid="technical-account-empty">
+                <td className="eia-muted" colSpan={10} data-testid="technical-account-empty">
                   No technical accounts yet for this contract.
                 </td>
               </tr>
@@ -532,6 +739,18 @@ export default function TechnicalAccountsPanel({ contractId, currency = 'USD', o
           </tbody>
         </table>
       </div>
+
+      {settleTarget && (
+        <SettleDialog
+          row={settleTarget}
+          reference={settleReference}
+          error={settleError}
+          busy={settleBusy}
+          onChange={setSettleReference}
+          onClose={closeSettle}
+          onSubmit={submitSettlement}
+        />
+      )}
     </section>
   );
 }

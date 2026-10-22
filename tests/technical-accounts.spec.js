@@ -284,6 +284,9 @@ async function mockContractApi(page, state) {
       const row = state.accounts.find((candidate) => candidate.accountId === statusMatch[2]);
       if (row) {
         row.status = body.status;
+        if (body.reference !== undefined) {
+          row.reference = body.reference;
+        }
       }
       await json(route, 200, row || {});
       return;
@@ -312,7 +315,8 @@ test('lists technical accounts newest period first with the ceded totals and iss
     periodStart: '2026-01-01',
     periodEnd: '2026-03-31',
     balance: '650000.0000',
-    status: 'SETTLED'
+    status: 'SETTLED',
+    reference: 'TREAS-2026-00010'
   });
   const secondQuarter = account({
     accountId: 'ta-20',
@@ -357,15 +361,19 @@ test('lists technical accounts newest period first with the ceded totals and iss
   await expect(rows.nth(0).getByTestId('technical-account-balance')).toHaveText('$1,950,000.00');
   await expect(rows.nth(0).getByTestId('technical-account-status')).toHaveText('DRAFT');
   await expect(rows.nth(0).getByTestId('technical-account-status')).toHaveClass(/amber/);
+  await expect(rows.nth(0).getByTestId('technical-account-settlement-reference')).toHaveText('—');
   await expect(rows.nth(0).getByRole('button', { name: 'Issue' })).toBeVisible();
 
   await expect(rows.nth(1).getByTestId('technical-account-number')).toHaveText('TA-2026-00020');
   await expect(rows.nth(1).getByTestId('technical-account-status')).toHaveText('ISSUED');
   await expect(rows.nth(1).getByTestId('technical-account-status')).toHaveClass(/blue/);
+  await expect(rows.nth(1).getByTestId('technical-account-settlement-reference')).toHaveText('—');
   await expect(rows.nth(1).getByRole('button', { name: 'Settle' })).toBeVisible();
 
   await expect(rows.nth(2).getByTestId('technical-account-number')).toHaveText('TA-2026-00010');
   await expect(rows.nth(2).getByTestId('technical-account-status')).toHaveText('SETTLED');
+  await expect(rows.nth(2).getByTestId('technical-account-settlement-reference'))
+    .toHaveText('TREAS-2026-00010');
   await expect(rows.nth(2).getByTestId('technical-account-action')).toHaveText('—');
 
   await expect(page.getByTestId('technical-account-summary-premium')).toHaveText('$6,000,000.00');
@@ -381,6 +389,8 @@ test('lists technical accounts newest period first with the ceded totals and iss
   await expect(note).toContainText('FS-RI');
   await expect(note).toContainText('SAP');
   await expect(note).toContainText('posted amounts');
+  await expect(note).toContainText('ties it to the treasury settlement');
+  await expect(note).toContainText('does not create or execute a Payment');
 });
 
 test('creates a technical account with the period, amounts, currency, and computed balance preview', async ({ page }) => {
@@ -449,7 +459,7 @@ test('creates a technical account with the period, amounts, currency, and comput
   await expect(page.getByTestId('technical-account-preview-direction')).toHaveText('Nil balance.');
 });
 
-test('issues a draft and settles an issued statement only after confirmation', async ({ page }) => {
+test('issues a draft after confirmation and settles an issued statement with a required reference', async ({ page }) => {
   const draft = account({
     accountId: 'ta-30',
     accountNumber: 'TA-2026-00030',
@@ -505,27 +515,154 @@ test('issues a draft and settles an issued statement only after confirmation', a
   );
   await expect(page.getByTestId('technical-account-summary-outstanding')).toHaveText('$1,950,000.00');
 
+  // Settling opens a reference dialog instead of a browser confirmation.
   await row.getByRole('button', { name: 'Settle' }).click();
+  const dialog = page.getByTestId('technical-account-settle-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Settle technical account TA-2026-00030');
+  await expect(dialog).toContainText('2026-07-01 → 2026-09-30');
+  await expect(dialog).toContainText('ties this period statement to the treasury settlement');
+  await expect(dialog).toContainText('does not create or execute a Payment');
+  expect(state.patches).toHaveLength(1);
+
+  // The reference is required; a blank submit never reaches the service.
+  await dialog.getByTestId('technical-account-settle-submit').click();
+  await expect(page.getByTestId('technical-account-settle-error')).toHaveText(
+    'Settlement reference is required.'
+  );
+  expect(state.patches).toHaveLength(1);
+
+  // Whitespace is not a reference either.
+  await page.getByTestId('technical-account-settle-reference').fill('   ');
+  await dialog.getByTestId('technical-account-settle-submit').click();
+  await expect(page.getByTestId('technical-account-settle-error')).toHaveText(
+    'Settlement reference is required.'
+  );
+  expect(state.patches).toHaveLength(1);
+
+  // Closing the dialog is not a settlement either.
+  await dialog.getByTestId('technical-account-settle-close').click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.patches).toHaveLength(1);
+  await expect(row.getByTestId('technical-account-status')).toHaveText('ISSUED');
+  await expect(row.getByTestId('technical-account-settlement-reference')).toHaveText('—');
+
+  await row.getByRole('button', { name: 'Settle' }).click();
+  await page.getByTestId('technical-account-settle-reference').fill('  TREAS-2026-00030  ');
+  await page.getByTestId('technical-account-settle-submit').click();
+
   await expect.poll(() => state.patches.length).toBe(2);
   expect(state.patches[1]).toEqual({
     path: `/api/v1/contracts/${CONTRACT_ID}/technical-accounts/ta-30/status`,
-    body: { status: 'SETTLED' },
+    body: { status: 'SETTLED', reference: 'TREAS-2026-00030' },
     tenant: TENANT,
     accountId: 'ta-30'
   });
+  await expect(page.getByTestId('technical-account-settle-dialog')).toHaveCount(0);
   await expect(row.getByTestId('technical-account-status')).toHaveText('SETTLED');
   await expect(row.getByTestId('technical-account-status')).toHaveClass(/green/);
+  await expect(row.getByTestId('technical-account-settlement-reference'))
+    .toHaveText('TREAS-2026-00030');
   await expect(row.getByTestId('technical-account-action')).toHaveText('—');
   await expect(page.getByTestId('technical-account-message')).toHaveText(
     'Technical account TA-2026-00030 settled.'
   );
   await expect(page.getByTestId('technical-account-summary-outstanding')).toHaveText('—');
 
-  expect(dialogs).toHaveLength(2);
+  // Only Issue asked for a browser confirmation; settle used the dialog.
+  expect(dialogs).toHaveLength(1);
   expect(dialogs[0]).toContain('Issue technical account TA-2026-00030 for 2026-07-01 → 2026-09-30');
   expect(dialogs[0]).toContain('The contract remains the source of its terms.');
-  expect(dialogs[1]).toContain('Settle technical account TA-2026-00030 for 2026-07-01 → 2026-09-30');
-  expect(dialogs[1]).toContain('FS-RI and SAP own the posted amounts.');
+});
+
+test('shows a settled statement settlement reference in the row and expanded detail', async ({ page }) => {
+  const settled = account({
+    accountId: 'ta-10',
+    accountNumber: 'TA-2026-00010',
+    status: 'SETTLED',
+    reference: 'TREAS-2026-00010'
+  });
+  const state = emptyState([settled]);
+  await mockContractApi(page, state);
+
+  await openTechnicalAccounts(page);
+  const row = page.getByTestId('technical-account-row');
+  await expect(row.getByTestId('technical-account-status')).toHaveText('SETTLED');
+  await expect(row.getByTestId('technical-account-settlement-reference'))
+    .toHaveText('TREAS-2026-00010');
+  await expect(row.getByTestId('technical-account-action')).toHaveText('—');
+
+  await page.getByTestId('technical-account-expand').click();
+  const detail = page.getByTestId('technical-account-settlement-detail');
+  await expect(detail).toBeVisible();
+  await expect(detail).toContainText('Settlement reference');
+  await expect(detail).toContainText('TREAS-2026-00010');
+  await expect(detail).toContainText(
+    'ties this statement to the treasury settlement recorded in Payment.'
+  );
+
+  const panel = page.getByTestId('technical-account-lines-panel');
+  await expect(panel.getByTestId('technical-account-lines-readonly')).toContainText('SETTLED');
+  await expect(panel.getByTestId('technical-account-lines-empty')).toBeVisible();
+});
+
+test('contains a settlement failure in the dialog and keeps the statement issued', async ({ page }) => {
+  const issued = account({
+    accountId: 'ta-20',
+    accountNumber: 'TA-2026-00020',
+    periodStart: '2026-04-01',
+    periodEnd: '2026-06-30',
+    cededPremium: '2000000.0000',
+    cededLosses: '500000.0000',
+    commission: '200000.0000',
+    balance: '1300000.0000',
+    status: 'ISSUED'
+  });
+  const state = emptyState([issued]);
+  state.statusError = {
+    status: 422,
+    body: {
+      code: 'INVALID_SETTLEMENT_REFERENCE',
+      message: 'Settlement reference does not match a treasury settlement'
+    }
+  };
+  await mockContractApi(page, state);
+
+  await openTechnicalAccounts(page);
+  const row = page.getByTestId('technical-account-row');
+  await row.getByRole('button', { name: 'Settle' }).click();
+  const dialog = page.getByTestId('technical-account-settle-dialog');
+  await page.getByTestId('technical-account-settle-reference').fill('TREAS-BAD-01');
+  await dialog.getByTestId('technical-account-settle-submit').click();
+
+  await expect.poll(() => state.patches.length).toBe(1);
+  const error = page.getByTestId('technical-account-settle-error');
+  await expect(error).toContainText('INVALID_SETTLEMENT_REFERENCE');
+  await expect(error).toContainText('Settlement reference does not match a treasury settlement');
+  await expect(dialog).toBeVisible();
+  await expect(row.getByTestId('technical-account-status')).toHaveText('ISSUED');
+  await expect(row.getByTestId('technical-account-settlement-reference')).toHaveText('—');
+  await expect(page.getByTestId('technical-account-message')).toHaveCount(0);
+
+  // A later valid attempt settles the statement with the corrected reference.
+  state.statusError = null;
+  await page.getByTestId('technical-account-settle-reference').fill('TREAS-2026-00020');
+  await dialog.getByTestId('technical-account-settle-submit').click();
+
+  await expect.poll(() => state.patches.length).toBe(2);
+  expect(state.patches[1]).toEqual({
+    path: `/api/v1/contracts/${CONTRACT_ID}/technical-accounts/ta-20/status`,
+    body: { status: 'SETTLED', reference: 'TREAS-2026-00020' },
+    tenant: TENANT,
+    accountId: 'ta-20'
+  });
+  await expect(dialog).toHaveCount(0);
+  await expect(row.getByTestId('technical-account-status')).toHaveText('SETTLED');
+  await expect(row.getByTestId('technical-account-settlement-reference'))
+    .toHaveText('TREAS-2026-00020');
+  await expect(page.getByTestId('technical-account-message')).toHaveText(
+    'Technical account TA-2026-00020 settled.'
+  );
 });
 
 test('shows the empty state, zero totals, and the statement context note', async ({ page }) => {

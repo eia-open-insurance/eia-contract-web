@@ -48,13 +48,16 @@ blocking the record.
 The **Technical accounts** tab lists the selected contract's period statements
 newest period first from `GET /api/v1/contracts/{id}/technical-accounts`, with
 the account number, period, ceded premium, ceded losses, commission, balance,
-status, and action. A create form posts the period start/end, currency, ceded
-premium, ceded losses, commission, and other charges to the same path and shows
-the computed balance preview (`ceded premium − ceded losses − commission + other
-charges`). Summary cards total ceded premium, ceded losses, commission, the
-outstanding balance of ISSUED statements only, and the account count. **Issue**
-(DRAFT → ISSUED) and **Settle** (ISSUED → SETTLED) are confirmed PATCHes to
-`/technical-accounts/{accountId}/status`. Each account row also expands to show
+status, settlement reference, and action. A create form posts the period
+start/end, currency, ceded premium, ceded losses, commission, and other charges
+to the same path and shows the computed balance preview (`ceded premium − ceded
+losses − commission + other charges`). Summary cards total ceded premium, ceded
+losses, commission, the outstanding balance of ISSUED statements only, and the
+account count. **Issue** (DRAFT → ISSUED) is a confirmed PATCH to
+`/technical-accounts/{accountId}/status`. **Settle** (ISSUED → SETTLED) opens a
+modal that requires a payment/settlement reference and PATCHes
+`{ "status": "SETTLED", "reference": "…" }`; the settled row and its expanded
+detail then show that reference. Each account row also expands to show
 its statement lines from
 `GET /api/v1/contracts/{id}/technical-accounts/{accountId}/lines`: type,
 reference, description, amount, and delete, with totals grouped by line type and
@@ -70,7 +73,9 @@ If Issue returns `409 ACCOUNT_LINES_DO_NOT_RECONCILE`, the expanded detail shows
 the service's explanation while the statement stays DRAFT. A context note
 explains that a technical account is a period statement, the contract remains
 the source of its terms, FS-RI/SAP own the posted amounts, and a DRAFT's lines
-must reconcile before issue; load failures stay inside the tab and never block
+must reconcile before issue; it also explains that the settlement reference ties
+the statement to the treasury settlement in Payment and does not create or
+execute a Payment. Load failures stay inside the tab and never block
 the contract record.
 
 The **Cash calls** tab sits directly after Technical accounts and lists the
@@ -131,10 +136,12 @@ record discovery (deep links, queue filtering, predictive party lookup,
 party-label resolution and fallback, and cross-links), and linked-document
 visibility (query and tenant header, document links, empty state, contained
 error, and non-blocking fetch), plus technical accounts (newest-first listing,
-create payload and balance preview, confirmed issue/settle payloads, expandable
+create payload and balance preview, confirmed issue, the reference-required
+settle modal with its SETTLED payload and row/detail reference display, expandable
 statement lines with totals and reconciliation, line add/delete payloads,
-immutable issued lines, empty, load-error, duplicate-period 409, and
-line-reconciliation 409 states), cash calls (newest-first listing and summary
+immutable issued lines, empty, load-error, duplicate-period 409, settlement
+service-error, and line-reconciliation 409 states), cash calls (newest-first
+listing and summary
 counts/amounts/overdue due dates, create payload and local period/amount
 validation, confirmed issue and cancel payloads, the required settlement
 reference and its SETTLED payload/row display, the ISSUED-only Payment hand-off

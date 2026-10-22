@@ -7,6 +7,11 @@
  * arithmetic the browser needs for the balance preview and summary cards. The
  * domain service remains authoritative for the stored balance; the browser only
  * previews the same formula.
+ *
+ * Settlement is a bookkeeping act, not a payment execution. Settling an ISSUED
+ * statement records the payment/settlement reference that ties the statement to
+ * the treasury settlement; recording the reference never creates or executes a
+ * Payment.
  */
 
 /** Four decimal places, matching the domain's numeric(19,4) money columns. */
@@ -21,6 +26,15 @@ const OTHER_CHARGE_KEYS = ['otherCharges', 'otherChargesAmount'];
 const BALANCE_KEYS = ['balance', 'balanceAmount'];
 const ACCOUNT_NUMBER_KEYS = ['accountNumber', 'technicalAccountNumber', 'number'];
 const ACCOUNT_ID_KEYS = ['accountId', 'id', 'technicalAccountId'];
+const SETTLEMENT_REFERENCE_KEYS = [
+  'reference',
+  'settlementReference',
+  'settlementRef',
+  'paymentReference'
+];
+
+/** The settlement reference is bounded so a pasted line cannot become a payload. */
+export const SETTLEMENT_REFERENCE_MAX_LENGTH = 128;
 
 export const TECHNICAL_ACCOUNT_STATUS = {
   DRAFT: 'DRAFT',
@@ -91,6 +105,16 @@ export function accountOtherCharges(row) {
 export function accountStatus(row) {
   const value = pick(row, ['status']);
   return value === undefined ? '' : String(value).toUpperCase();
+}
+
+/**
+ * The treasury/payment reference recorded when the statement is settled. The
+ * service returns it as `reference`; the aliases keep the panel tolerant of the
+ * older settlement vocabulary without inventing a second field on the wire.
+ */
+export function accountSettlementReference(row) {
+  const value = pick(row, SETTLEMENT_REFERENCE_KEYS);
+  return value === undefined ? '' : String(value);
 }
 
 /**
@@ -237,8 +261,31 @@ export function nextAction(row) {
   return null;
 }
 
-export function statusPayload(status) {
-  return { status };
+/**
+ * Status payload for PATCH .../status. Issue sends only the target status;
+ * settle also carries the required payment/settlement reference that ties the
+ * statement to the treasury settlement.
+ */
+export function statusPayload(status, reference) {
+  const payload = { status };
+  if (status === TECHNICAL_ACCOUNT_STATUS.SETTLED) {
+    payload.reference = String(reference || '').trim();
+  }
+  return payload;
+}
+
+/** Settle form validation: the reference is required and bounded. */
+export function validateSettleForm(form) {
+  const reference = String(form?.reference || '').trim();
+  if (!reference) {
+    return ['Settlement reference is required.'];
+  }
+  if (reference.length > SETTLEMENT_REFERENCE_MAX_LENGTH) {
+    return [
+      `Settlement reference must be ${SETTLEMENT_REFERENCE_MAX_LENGTH} characters or fewer.`
+    ];
+  }
+  return [];
 }
 
 /* ------------------------------------------------------------------------- *

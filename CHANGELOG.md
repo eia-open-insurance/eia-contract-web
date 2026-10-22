@@ -57,13 +57,13 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
   currency, ceded premium, ceded losses, commission, and other charges and shows
   the computed balance preview (ceded premium − ceded losses − commission + other
   charges); summary cards total ceded premium, ceded losses, commission, the
-  outstanding balance of ISSUED statements only, and the account count. Confirmed
-  **Issue** (DRAFT → ISSUED) and **Settle** (ISSUED → SETTLED) actions PATCH
+  outstanding balance of ISSUED statements only, and the account count. **Issue**
+  (DRAFT → ISSUED) is a confirmed PATCH to
   `/api/v1/contracts/{contractId}/technical-accounts/{accountId}/status`. A
   context note states that a technical account is a period statement, the
   contract remains the source of its terms, and FS-RI/SAP own the posted amounts.
 - Playwright coverage for technical accounts: newest-first listing and summary
-  totals, create payload and balance preview, confirmed issue/settle payloads,
+  totals, create payload and balance preview, the confirmed issue payload,
   the empty state and context note, a contained load failure, and a 409
   duplicate-period response that preserves the form.
 - Technical-account statement lines: each account row expands to list its lines
@@ -82,6 +82,14 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
   explanation and expected/actual detail while the statement stays DRAFT.
   Playwright coverage covers expand/list, every add-line option and its bucket,
   add payloads, delete, the immutable issued state, and the reconciliation 409.
+- Technical-account settlement reference: **Settle** now opens a modal that
+  requires a payment/settlement reference and PATCHes
+  `{ "status": "SETTLED", "reference": "…" }`; the settled row and its expanded
+  detail show the reference. The context note and settle dialog explain that the
+  reference ties the statement to the treasury settlement in Payment and that
+  recording it does not create or execute a Payment. Playwright coverage adds
+  required-reference validation, the exact SETTLED payload, row and detail
+  reference display, and a contained settlement service error.
 - **Cash calls** tab, directly after Technical accounts: lists the selected
   contract's interim funding requests newest period first from
   `GET /api/v1/contracts/{id}/cash-calls`, with call number, period,

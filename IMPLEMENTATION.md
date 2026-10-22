@@ -80,23 +80,32 @@ The **Technical accounts** tab reads
 `GET /api/v1/contracts/{contractId}/technical-accounts` with the tenant header and
 sorts the statements newest period first by period end (then period start and
 account number). Each row shows the account number, period, ceded premium, ceded
-losses, commission, balance, status, and the one available action: a DRAFT can
-be **issued** and an ISSUED statement can be **settled**. Both actions ask for
-confirmation and then PATCH
+losses, commission, balance, status, settlement reference, and the one available
+action: a DRAFT can be **issued** and an ISSUED statement can be **settled**.
+Issue asks for confirmation and then PATCHes
 `/api/v1/contracts/{contractId}/technical-accounts/{accountId}/status` with
-`{ "status": "ISSUED" }` or `{ "status": "SETTLED" }`; a dismissed confirmation
-sends nothing. The create form posts `periodStart`, `periodEnd`, `currency`,
+`{ "status": "ISSUED" }`; a dismissed confirmation sends nothing. **Settle**
+opens a reference-required modal instead of a browser confirmation. The modal
+rejects a blank or overlong reference locally and PATCHes
+`{ "status": "SETTLED", "reference": "…" }`; on success the dialog closes, the
+panel reloads, and the settled row shows the reference (the submitted value is
+retained locally until the service echoes it) and no action. A settled statement
+with no recorded reference shows an em dash. The create form posts
+`periodStart`, `periodEnd`, `currency`,
 `cededPremium`, `cededLosses`, `commission`, and `otherCharges` to the collection
 path as 4-dp decimal strings and previews the balance as ceded premium minus
 ceded losses and commission, plus other charges; a positive balance is due to the
 reinsurer. Five summary cards total ceded premium, ceded losses, commission, the
 outstanding balance of ISSUED statements only, and the account count. The tab
 carries a statement context note — a technical account is a period statement,
-the contract remains the source of its terms, and FS-RI/SAP own the posted
-amounts — and contains load, create, and conflict failures locally so the
-contract record stays usable.
+the contract remains the source of its terms, FS-RI/SAP own the posted amounts,
+and the settlement reference ties the statement to the treasury settlement in
+Payment without creating or executing a Payment — and contains load, create, and
+conflict failures locally so the contract record stays usable.
 
-Each technical-account row expands through a chevron button. The expanded panel
+Each technical-account row expands through a chevron button. A settled statement
+shows its recorded settlement reference above the expanded detail, tying the
+statement to the treasury settlement. The expanded panel
 reads `GET /api/v1/contracts/{contractId}/technical-accounts/{accountId}/lines`
 with the tenant header and shows the statement lines (type, reference,
 description, amount, and delete), a totals-by-type table, a totals-by-bucket
@@ -212,8 +221,10 @@ the contract payload facts, refetching on selection, and the card refresh.
 `tests/technical-accounts.spec.js` covers the newest-period-first listing and
 summary totals (issued-only outstanding balance), the create form's local period
 validation and exact POST payload with the computed balance preview, the
-confirmed issue/settle PATCH payloads (including a dismissed confirmation), the
-empty state and context note, a contained load failure, and a 409 duplicate-period
+confirmed issue PATCH (including a dismissed confirmation), the reference-required
+settle modal with its exact SETTLED payload and row/detail reference display, a
+contained settlement service error, the empty state and context note, a contained
+load failure, and a 409 duplicate-period
 response that preserves the form. It also covers expanding a row to list the
 lines with the tenant header and totals by type, the reconciled indicator, adding
 a line with its exact POST payload and the reconciliation recomputation, deleting
