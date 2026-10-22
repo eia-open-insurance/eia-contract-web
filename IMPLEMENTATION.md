@@ -16,7 +16,7 @@ selected record on the right.
 | Register | Lists contracts with number, cedent, reinsurer, and status; selecting one opens it and pushes `?record={id}` |
 | Queue filter | Prominent client-side filter over number, type, cedent, and status, with a result count and Clear action |
 | Create contract | Primary header action (`?new=1`); opens a compact create form for a draft contract with predictive cedent/reinsurer `EntityPicker`s backed by `/api/v1/parties/search` |
-| Overview | Contract facts with party cross-links, lifecycle transition, bind preconditions, the "Why this matters" context panel, related assumed claims/retrocessions, and linked documents |
+| Overview | Contract facts with party cross-links, lifecycle transition, bind preconditions, the "Why this matters" context panel, related assumed claims/retrocessions, linked documents, and related notifications |
 | Layers | List and add layers (number, type, attachment, limit, basis, currency, effective dates, tower note) |
 | Participants | List and add participations; shows the risk-bearing share total per layer and whether it is balanced |
 | Terms | List and add terms with a term code, value, source clause, and effective dates |
@@ -64,6 +64,23 @@ state and an evidence note ("documents are evidence, not business facts").
 Loading and failure are card-local: a slow or unavailable Document API never
 blocks or fails the contract render, and the existing related-record cards keep
 their state.
+
+The **Related notifications** card fetches
+`GET /api/v1/notifications?sourceType=CONTRACT&sourceId={id}` with the tenant
+header after the contract is on screen. Notifications is tenant-scoped rather
+than book-scoped, so no book header is sent. The card accepts either a bare array
+or an `{ items }` envelope, shows the total count and the three newest
+notifications (number, subject, delivery status, and creation time, newest
+first), links each number to `/notifications?record={id}`, and links **View all
+notifications** to the server-filtered queue
+`/notifications?sourceType=CONTRACT&sourceId={id}`. A `total` on the envelope is
+kept as the count even when the preview is truncated, and an explicit
+`sourceId`/`sourceType` that names another record is dropped so the card never
+presents an unrelated message. Loading, empty, and failure states are card-local:
+a slow or unavailable Notifications service never blocks or fails the contract
+render, and the existing related-record and document cards keep their state. The
+card explains that notifications are delivery artifacts owned by the
+Notifications vertical and that it never sends or changes one.
 
 The **Activity** tab shows the event-derived timeline for the selected contract.
 Selecting a record fetches `GET /api/v1/events/aggregate/{contractId}?limit=50`
@@ -215,7 +232,12 @@ POST payload, party-label resolution and fallback, and the Overview
 cross-links/related records). `tests/documents.spec.js` covers the linked-document
 query and tenant header, document links, refetching on selection, the empty
 state, a contained error, and rendering the contract while the Document API is
-still in flight. `tests/activity.spec.js` covers the aggregate path and tenant
+still in flight. `tests/notifications.spec.js` covers the exact
+`sourceType`/`sourceId` query and tenant header, the count and newest-three
+preview (newest first, unrelated rows dropped), the `/notifications?record={id}`
+and filtered-queue links, refetching on selection, the `{ items }` envelope, the
+empty state, a contained 503, and rendering the contract while the Notifications
+API is still in flight. `tests/activity.spec.js` covers the aggregate path and tenant
 header, newest-first ordering and rendering, the empty state, a contained 503,
 the contract payload facts, refetching on selection, and the card refresh.
 `tests/technical-accounts.spec.js` covers the newest-period-first listing and

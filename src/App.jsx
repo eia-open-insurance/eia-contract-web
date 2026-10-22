@@ -13,7 +13,14 @@ import CashCallsPanel from './CashCallsPanel';
 import BordereauxPanel from './BordereauxPanel';
 import SecurityPanel from './SecurityPanel';
 import ActivityPanel from './ActivityPanel';
+import NotificationsPanel from './NotificationsPanel';
 import { activityEndpoint, activityItems } from './activity';
+import {
+  contractNotificationCount,
+  contractNotifications,
+  contractNotificationsEndpoint,
+  emptyContractNotificationsState
+} from './notifications';
 import {
   CONTRACT_LINKED_TYPE,
   documentHref,
@@ -250,6 +257,7 @@ export default function App() {
   const [documentsError, setDocumentsError] = useState('');
   const [activity, setActivity] = useState({ items: [], loading: false, error: '' });
   const [activityNonce, setActivityNonce] = useState(0);
+  const [notifications, setNotifications] = useState(emptyContractNotificationsState);
   const [routeVersion, setRouteVersion] = useState(0);
 
   const selected = contracts.find((contract) => contract.id === selectedId) || null;
@@ -431,6 +439,45 @@ export default function App() {
         setDocuments([]);
         setDocumentsError(errorMessage(error));
         setDocumentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, refreshToken]);
+
+  /**
+   * Related notifications for the selected contract. Notifications are delivery
+   * artifacts owned by the Notifications vertical, so this is a read-only
+   * projection: the fetch starts after the record is on screen and owns its own
+   * loading/error state, and a slow or unavailable Notifications service never
+   * blocks or fails the contract render.
+   */
+  useEffect(() => {
+    if (!selectedId) {
+      setNotifications(emptyContractNotificationsState());
+      return undefined;
+    }
+    let cancelled = false;
+    setNotifications({ items: [], count: 0, loading: true, error: '' });
+    apiFetch(contractNotificationsEndpoint(selectedId))
+      .then((payload) => {
+        if (cancelled) return;
+        const items = contractNotifications(payload, selectedId);
+        setNotifications({
+          items,
+          count: contractNotificationCount(payload, items),
+          loading: false,
+          error: ''
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setNotifications({
+          items: [],
+          count: 0,
+          loading: false,
+          error: errorMessage(error)
+        });
       });
     return () => {
       cancelled = true;
@@ -1184,6 +1231,14 @@ export default function App() {
                       </div>
                     )}
                   </section>
+
+                  <NotificationsPanel
+                    contractId={selectedId}
+                    items={notifications.items}
+                    count={notifications.count}
+                    loading={notifications.loading}
+                    error={notifications.error}
+                  />
                 </>
               )}
 

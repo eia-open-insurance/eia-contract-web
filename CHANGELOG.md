@@ -152,6 +152,21 @@ The format is based on Keep a Changelog and the project uses Semantic Versioning
   payload and local amount validation, confirmed release/expire payloads, the
   empty state and context note, a contained load failure, and create/status 409
   states.
+- Related-notifications Overview card: selecting a contract fetches
+  `GET /api/v1/notifications?sourceType=CONTRACT&sourceId={id}` with the tenant
+  header and shows the total count plus the three newest notifications (number,
+  subject, delivery status, and creation time, newest first). Each number opens
+  `/notifications?record={id}`, and **View all notifications** opens the
+  Notifications queue filtered to this contract
+  (`/notifications?sourceType=CONTRACT&sourceId={id}`). Rows from another source
+  are dropped, an `{ items }` envelope is accepted, and loading, empty, and
+  failure states stay inside the card so a slow or unavailable Notifications
+  service never blocks the contract record.
+- Playwright coverage for related notifications: the source query and tenant
+  header, count and newest-three preview, record and filtered-queue links,
+  refetching on selection, the envelope and single-notification case, the empty
+  state, a contained 503, and rendering the contract while the lookup is in
+  flight.
 
 ### Changed
 

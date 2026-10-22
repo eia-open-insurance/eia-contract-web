@@ -45,6 +45,17 @@ empty state and an evidence note. Documents are evidence and never change the
 contract; a slow or failing Document API renders inside the card without
 blocking the record.
 
+A **Related notifications** card lists the Notifications messages whose
+`sourceType`/`sourceId` point at the selected contract from
+`GET /api/v1/notifications?sourceType=CONTRACT&sourceId={id}`: the total count
+and the three newest notifications with their number, subject, delivery status,
+and creation time (newest first). Each notification number opens its record at
+`/notifications?record={id}`, and **View all notifications** opens the
+Notifications queue filtered to this contract
+(`/notifications?sourceType=CONTRACT&sourceId={id}`). An empty state and a
+delivery-artifact note are local to the card; a slow or failing Notifications API
+renders inside it and never blocks the contract record.
+
 The **Technical accounts** tab lists the selected contract's period statements
 newest period first from `GET /api/v1/contracts/{id}/technical-accounts`, with
 the account number, period, ceded premium, ceded losses, commission, balance,
@@ -135,7 +146,10 @@ layer/participant/bind, the over-100% share rejection, the cession/capacity flow
 record discovery (deep links, queue filtering, predictive party lookup,
 party-label resolution and fallback, and cross-links), and linked-document
 visibility (query and tenant header, document links, empty state, contained
-error, and non-blocking fetch), plus technical accounts (newest-first listing,
+error, and non-blocking fetch), related notifications (source query and tenant
+header, newest-three preview and count, record and filtered-queue links,
+refetching on selection, empty state, contained error, and non-blocking fetch),
+plus technical accounts (newest-first listing,
 create payload and balance preview, confirmed issue, the reference-required
 settle modal with its SETTLED payload and row/detail reference display, expandable
 statement lines with totals and reconciliation, line add/delete payloads,
